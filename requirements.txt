@@ -1,0 +1,12 @@
+streamlit
+pandas
+numpy
+plotly
+scipy
+yfinance
+gspread
+google-auth
+requests
+reportlab
+pypdf
+matplotlib
