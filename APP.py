@@ -826,7 +826,80 @@ if st.session_state.result_ready:
 
         st.markdown("---")
 
-        # ── E. 生成 PDF ──
+        # ── E. 資料明細 ──
+        with st.expander("🔍 資料明細（點擊展開）"):
+            st.markdown("**各標的資料來源說明**")
+
+            meta_rows = []
+            for lbl in labels:
+                # 判斷是債券、基金還是股票
+                isin = None
+                for k, v in LOCAL_DB.items():
+                    if v["issuer"] == lbl:
+                        isin = k
+                        break
+
+                if lbl in returns_df.columns:
+                    col_data   = returns_df[lbl].dropna()
+                    data_start = col_data.index[0].strftime("%Y-%m-%d")
+                    data_end   = col_data.index[-1].strftime("%Y-%m-%d")
+                    n_days     = len(col_data)
+                else:
+                    data_start = data_end = "-"
+                    n_days = 0
+
+                if isin:
+                    info = LOCAL_DB[isin]
+                    maturity_year = int(info["maturity"])
+                    proxy = "VCLT（15年以上長債ETF）" if maturity_year >= CUTOFF_YEAR else "LQD（15年以下投資等級ETF）"
+                    meta_rows.append({
+                        "標的": lbl, "類型": "債券",
+                        "ISIN": isin, "到期年": info["maturity"],
+                        "票息": f"{info['coupon']}%",
+                        "不足時補齊用": proxy,
+                        "資料起始": data_start,
+                        "資料結束": data_end,
+                        "有效交易日": n_days,
+                    })
+                elif lbl in FUND_DB.values():
+                    meta_rows.append({
+                        "標的": lbl, "類型": "基金",
+                        "ISIN": "-", "到期年": "-",
+                        "票息": "-", "不足時補齊用": "-",
+                        "資料起始": data_start,
+                        "資料結束": data_end,
+                        "有效交易日": n_days,
+                    })
+                else:
+                    meta_rows.append({
+                        "標的": lbl, "類型": "股票/ETF",
+                        "ISIN": "-", "到期年": "-",
+                        "票息": "-", "不足時補齊用": "-",
+                        "資料起始": data_start,
+                        "資料結束": data_end,
+                        "有效交易日": n_days,
+                    })
+
+            st.dataframe(pd.DataFrame(meta_rows), use_container_width=True, hide_index=True)
+
+            st.markdown("---")
+            st.markdown("**原始日報酬率（最新在上，紅=負報酬 綠=正報酬）**")
+            st.caption(f"交集期間：{returns_df.index[0].strftime('%Y-%m-%d')} ～ {returns_df.index[-1].strftime('%Y-%m-%d')}，共 {len(returns_df)} 個交易日")
+
+            display_df = returns_df.copy()
+            display_df.index = display_df.index.strftime("%Y-%m-%d")
+            display_df = display_df.sort_index(ascending=False)
+            st.dataframe(
+                display_df.style.format("{:.4%}").background_gradient(
+                    cmap="RdYlGn", vmin=-0.03, vmax=0.03
+                ),
+                use_container_width=True,
+                height=400
+            )
+
+        st.markdown("---")
+
+        # ── F. 生成 PDF ──
         if st.button("🖨️ 生成 PDF 報告（密碼保護）", type="primary"):
             with st.spinner("生成中..."):
                 pdf_buf = generate_pdf(
