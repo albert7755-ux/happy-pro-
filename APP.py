@@ -203,15 +203,24 @@ def read_sheet_as_series(sheet_id, label):
     ws = sh.get_worksheet(0)
     data = ws.get_all_records()
     df = pd.DataFrame(data)
-    if "time" in df.columns:
-        df["date"] = pd.to_datetime(df["time"], unit="s", errors="coerce")
-        if df["date"].isna().all():
-            df["date"] = pd.to_datetime(df["time"], errors="coerce")
-    elif "date" in df.columns:
-        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+
+    # 自動偵測日期欄位（第一欄）
+    date_col = df.columns[0]
+    val_col = df.columns[1]
+
+    # 嘗試解析日期
+    try:
+        # 先試 Unix timestamp
+        df["date"] = pd.to_datetime(df[date_col], unit="s", errors="coerce")
+        if df["date"].isna().mean() > 0.5:
+            # 大部分失敗，改用字串解析
+            df["date"] = pd.to_datetime(df[date_col], errors="coerce")
+    except:
+        df["date"] = pd.to_datetime(df[date_col], errors="coerce")
+
     df = df.dropna(subset=["date"])
     df = df.sort_values("date").set_index("date")
-    return df["close"].astype(float).rename(label)
+    return df[val_col].astype(float).rename(label)
 
 # ==========================================
 # 核心計算函式
