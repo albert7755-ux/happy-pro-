@@ -320,84 +320,174 @@ def get_chinese_font():
     except:
         return "Helvetica"
 
-def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, corr_df, method_name, period_label):
+def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret, port_vol, port_sharpe, method_name, period_label):
     buf = io.BytesIO()
     font = get_chinese_font()
     NAVY = colors.HexColor("#1a2744")
     GOLD = colors.HexColor("#c8a84b")
     WHITE = colors.white
-    BG = colors.HexColor("#f0f4ff")
+    BG   = colors.HexColor("#f0f4ff")
+    RED  = colors.HexColor("#c62828")
+    GREEN= colors.HexColor("#2e7d32")
 
     doc = SimpleDocTemplate(buf, pagesize=A4,
                             leftMargin=1.8*cm, rightMargin=1.8*cm,
                             topMargin=2*cm, bottomMargin=2*cm)
 
     title_s = ParagraphStyle("t", fontName=font, fontSize=20, textColor=WHITE, alignment=TA_CENTER)
-    sub_s = ParagraphStyle("s", fontName=font, fontSize=10, textColor=colors.HexColor("#cce0ff"), alignment=TA_CENTER)
-    h2_s = ParagraphStyle("h2", fontName=font, fontSize=12, textColor=NAVY, spaceBefore=12, spaceAfter=6)
-    body_s = ParagraphStyle("b", fontName=font, fontSize=9, textColor=colors.HexColor("#333"))
-    warn_s = ParagraphStyle("w", fontName=font, fontSize=7.5, textColor=colors.HexColor("#cc0000"),
-                            backColor=colors.HexColor("#fff3cd"), borderPadding=6, spaceBefore=8)
+    sub_s   = ParagraphStyle("s", fontName=font, fontSize=10, textColor=colors.HexColor("#cce0ff"), alignment=TA_CENTER)
+    h2_s    = ParagraphStyle("h2", fontName=font, fontSize=12, textColor=NAVY, spaceBefore=12, spaceAfter=6)
+    body_s  = ParagraphStyle("b", fontName=font, fontSize=9, textColor=colors.HexColor("#333"), spaceAfter=3)
+    small_s = ParagraphStyle("sm", fontName=font, fontSize=8, textColor=colors.HexColor("#555"))
+    warn_s  = ParagraphStyle("w", fontName=font, fontSize=7.5, textColor=RED,
+                             backColor=colors.HexColor("#fff3cd"), borderPadding=6, spaceBefore=8)
 
     story = []
 
-    # 封面
-    title_tbl = Table([[Paragraph("最適投資組合分析報告", title_s)],
-                       [Paragraph(f"策略：{method_name}　｜　回測期間：{period_label}　｜　製作日期：{datetime.today().strftime('%Y-%m-%d')}", sub_s)]],
-                      colWidths=[17*cm])
+    # ── 封面標題 ──
+    title_tbl = Table(
+        [[Paragraph("最適投資組合分析報告", title_s)],
+         [Paragraph(f"策略：{method_name}　｜　回測期間：{period_label}　｜　製作日期：{datetime.today().strftime('%Y-%m-%d')}", sub_s)]],
+        colWidths=[17*cm]
+    )
     title_tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,-1), NAVY),
-        ("TOPPADDING", (0,0), (-1,-1), 14),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 14),
+        ("BACKGROUND",   (0,0), (-1,-1), NAVY),
+        ("TOPPADDING",   (0,0), (-1,-1), 16),
+        ("BOTTOMPADDING",(0,0), (-1,-1), 16),
     ]))
     story.append(title_tbl)
     story.append(Spacer(1, 0.5*cm))
 
-    # 建議配置
-    story.append(Paragraph("一、建議配置權重", h2_s))
-    story.append(HRFlowable(width="100%", thickness=2, color=GOLD, spaceAfter=6))
+    # ── 一、整體組合績效 ──
+    story.append(Paragraph("一、整體組合預期績效", h2_s))
+    story.append(HRFlowable(width="100%", thickness=2, color=GOLD, spaceAfter=8))
+
+    # 計算 VaR（常態分配假設）
+    var_68 = port_ret - port_vol          # 68%：1σ
+    var_95 = port_ret - 1.645 * port_vol  # 95%：1.645σ
+    var_99 = port_ret - 2.326 * port_vol  # 99%：2.326σ
+
+    kpi_data = [
+        ["指標", "數值", "說明"],
+        ["年化報酬率", f"{port_ret:.2%}", "歷史加權平均年化報酬"],
+        ["年化波動率", f"{port_vol:.2%}", "報酬率標準差年化"],
+        ["夏普比率",   f"{port_sharpe:.2f}", f"(報酬 - 無風險利率{RISK_FREE_RATE:.0%}) / 波動"],
+        ["68% 信賴區間", f"{var_68:.2%} ～ {port_ret + port_vol:.2%}", "約有 68% 機率年報酬落在此區間（1σ）"],
+        ["95% 信賴區間", f"{var_95:.2%} ～ {port_ret + 1.645*port_vol:.2%}", "約有 95% 機率年報酬落在此區間（1.645σ）"],
+        ["99% 信賴區間", f"{var_99:.2%} ～ {port_ret + 2.326*port_vol:.2%}", "約有 99% 機率年報酬落在此區間（2.326σ）"],
+    ]
+    kpi_tbl = Table(kpi_data, colWidths=[4*cm, 4.5*cm, 8.5*cm])
+    kpi_tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0,0), (-1,0), NAVY),
+        ("TEXTCOLOR",     (0,0), (-1,0), WHITE),
+        ("FONTNAME",      (0,0), (-1,-1), font),
+        ("FONTSIZE",      (0,0), (-1,-1), 8.5),
+        ("ALIGN",         (0,0), (-1,-1), "CENTER"),
+        ("ROWBACKGROUNDS",(0,1), (-1,-1), [BG, WHITE]),
+        ("GRID",          (0,0), (-1,-1), 0.3, colors.HexColor("#dddddd")),
+        ("TOPPADDING",    (0,0), (-1,-1), 5),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+        # 68/95/99 列字體顏色
+        ("TEXTCOLOR", (1,4), (1,6), RED),
+    ]))
+    story.append(kpi_tbl)
+    story.append(Spacer(1, 0.3*cm))
+    story.append(Paragraph(
+        "※ 信賴區間基於常態分配假設計算，實際報酬分佈可能有厚尾風險，請審慎參考。", small_s))
+    story.append(Spacer(1, 0.4*cm))
+
+    # ── 二、建議配置權重 ──
+    story.append(Paragraph("二、建議配置權重", h2_s))
+    story.append(HRFlowable(width="100%", thickness=2, color=GOLD, spaceAfter=8))
 
     w_data = [["標的", "配置比例", "年化報酬", "年化波動", "夏普比率"]]
     for i, (lbl, w) in enumerate(zip(labels, weights)):
         if w > 0.001:
             w_data.append([
-                lbl, f"{w:.1%}", f"{ann_ret.iloc[i]:.2%}",
-                f"{ann_vol.iloc[i]:.2%}", f"{sharpe.iloc[i]:.2f}"
+                lbl,
+                f"{w:.1%}",
+                f"{ann_ret.iloc[i]:.2%}",
+                f"{ann_vol.iloc[i]:.2%}",
+                f"{sharpe.iloc[i]:.2f}"
             ])
 
-    w_tbl = Table(w_data, colWidths=[6*cm, 2.5*cm, 2.5*cm, 2.5*cm, 2.5*cm])
+    w_tbl = Table(w_data, colWidths=[6.5*cm, 2.2*cm, 2.5*cm, 2.5*cm, 2.3*cm])
     w_tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,0), NAVY),
-        ("TEXTCOLOR", (0,0), (-1,0), WHITE),
-        ("FONTNAME", (0,0), (-1,-1), font),
-        ("FONTSIZE", (0,0), (-1,-1), 8.5),
-        ("ALIGN", (0,0), (-1,-1), "CENTER"),
-        ("ROWBACKGROUNDS", (0,1), (-1,-1), [BG, WHITE]),
-        ("GRID", (0,0), (-1,-1), 0.3, colors.HexColor("#dddddd")),
-        ("TOPPADDING", (0,0), (-1,-1), 5),
+        ("BACKGROUND",    (0,0), (-1,0), NAVY),
+        ("TEXTCOLOR",     (0,0), (-1,0), WHITE),
+        ("FONTNAME",      (0,0), (-1,-1), font),
+        ("FONTSIZE",      (0,0), (-1,-1), 8.5),
+        ("ALIGN",         (0,0), (-1,-1), "CENTER"),
+        ("ROWBACKGROUNDS",(0,1), (-1,-1), [BG, WHITE]),
+        ("GRID",          (0,0), (-1,-1), 0.3, colors.HexColor("#dddddd")),
+        ("TOPPADDING",    (0,0), (-1,-1), 5),
         ("BOTTOMPADDING", (0,0), (-1,-1), 5),
     ]))
     story.append(w_tbl)
     story.append(Spacer(1, 0.4*cm))
 
-    # 組合績效
-    port_ret = sum(w * ann_ret.iloc[i] for i, w in enumerate(weights))
-    story.append(Paragraph("二、整體組合預期績效", h2_s))
-    story.append(HRFlowable(width="100%", thickness=2, color=GOLD, spaceAfter=6))
-    story.append(Paragraph(f"預期年化報酬：{port_ret:.2%}", body_s))
-    story.append(Spacer(1, 0.3*cm))
+    # ── 三、相關係數矩陣 ──
+    story.append(PageBreak())
+    story.append(Paragraph("三、相關係數矩陣", h2_s))
+    story.append(HRFlowable(width="100%", thickness=2, color=GOLD, spaceAfter=8))
 
-    # 免責聲明
-    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#888"), spaceBefore=8, spaceAfter=6))
+    corr = returns_df.corr()
+    short_labels = [lbl[:10] for lbl in corr.columns.tolist()]
+    corr_header = [""] + short_labels
+    corr_rows = [corr_header]
+    for i, lbl in enumerate(short_labels):
+        row = [lbl]
+        for j in range(len(short_labels)):
+            val = corr.iloc[i, j]
+            row.append(f"{val:.2f}")
+        corr_rows.append(row)
+
+    n_cols = len(short_labels) + 1
+    col_w = [17*cm / n_cols] * n_cols
+    corr_tbl = Table(corr_rows, colWidths=col_w)
+
+    corr_style = [
+        ("BACKGROUND",    (0,0), (-1,0), NAVY),
+        ("TEXTCOLOR",     (0,0), (-1,0), WHITE),
+        ("BACKGROUND",    (0,0), (0,-1), NAVY),
+        ("TEXTCOLOR",     (0,0), (0,-1), WHITE),
+        ("FONTNAME",      (0,0), (-1,-1), font),
+        ("FONTSIZE",      (0,0), (-1,-1), 7),
+        ("ALIGN",         (0,0), (-1,-1), "CENTER"),
+        ("GRID",          (0,0), (-1,-1), 0.3, colors.HexColor("#dddddd")),
+        ("TOPPADDING",    (0,0), (-1,-1), 4),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+    ]
+    # 高相關（>0.7）紅底，低相關（<0.3）綠底
+    for i in range(1, len(corr_rows)):
+        for j in range(1, n_cols):
+            try:
+                val = float(corr_rows[i][j])
+                if i != j:
+                    if val > 0.7:
+                        corr_style.append(("BACKGROUND", (j,i), (j,i), colors.HexColor("#ffcdd2")))
+                    elif val < 0.3:
+                        corr_style.append(("BACKGROUND", (j,i), (j,i), colors.HexColor("#c8e6c9")))
+            except:
+                pass
+
+    corr_tbl.setStyle(TableStyle(corr_style))
+    story.append(corr_tbl)
+    story.append(Spacer(1, 0.3*cm))
+    story.append(Paragraph("※ 紅底=高相關(>0.7)，綠底=低相關(<0.3)。低相關標的有助分散風險。", small_s))
+
+    # ── 免責聲明 ──
+    story.append(Spacer(1, 0.5*cm))
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#888"), spaceAfter=6))
     story.append(Paragraph(
         "⚠️ 免責聲明：本報告所有數據均基於歷史資料計算，不代表未來績效。"
-        "債券價格資料來源為 TradingView，基金資料來源為台灣 Yahoo 股市，僅供參考。"
+        "債券價格資料來源為 TradingView，基金資料來源為台灣 Yahoo 股市，僅供參考，不構成投資建議。"
         "本報告僅供內部教育訓練使用，請勿外流。", warn_s))
 
     doc.build(story)
     buf.seek(0)
 
-    # 加密PDF
+    # 加密 PDF
     try:
         from pypdf import PdfReader, PdfWriter
         reader = PdfReader(buf)
@@ -405,10 +495,10 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, corr_df, method_name
         for page in reader.pages:
             writer.add_page(page)
         writer.encrypt("5428")
-        encrypted_buf = io.BytesIO()
-        writer.write(encrypted_buf)
-        encrypted_buf.seek(0)
-        return encrypted_buf
+        enc_buf = io.BytesIO()
+        writer.write(enc_buf)
+        enc_buf.seek(0)
+        return enc_buf
     except:
         buf.seek(0)
         return buf
@@ -417,10 +507,10 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, corr_df, method_name
 # 主介面
 # ==========================================
 st.markdown("## 📐 最適投資組合優化器")
-st.markdown("結合債券、基金、股票，計算最適配置比例")
+st.markdown("結合債券（94檔）、基金（15檔）、自選股票/ETF，計算最適配置比例")
 st.markdown("---")
 
-# 側邊欄
+# 側邊欄：回測期間 & 優化目標
 st.sidebar.header("1. 回測期間")
 period_options = {"1年": 1, "2年": 2, "3年": 3, "5年": 5}
 period_label = st.sidebar.radio("選擇回測期間", list(period_options.keys()), horizontal=True)
@@ -429,7 +519,7 @@ years = period_options[period_label]
 st.sidebar.header("2. 優化目標")
 method_map = {
     "最大夏普比率": "max_sharpe",
-    "最小風險": "min_vol",
+    "最小風險":     "min_vol",
     "鎖定目標報酬": "target_return"
 }
 method_label = st.sidebar.radio("選擇策略", list(method_map.keys()))
@@ -438,24 +528,20 @@ target_return = 0.08
 if method == "target_return":
     target_return = st.sidebar.slider("目標年化報酬率 %", 1.0, 20.0, 8.0, 0.5) / 100
 
-st.sidebar.header("3. 自選股票/ETF")
-extra_tickers = st.sidebar.text_input("輸入代號（空白隔開）", "").upper().split()
-extra_tickers = [t for t in extra_tickers if t]
-
-# 主畫面：標的選擇
-tab_select, tab_corr, tab_frontier, tab_result = st.tabs(
-    ["📋 標的選擇", "🔗 相關係數", "📈 有效前緣", "🏆 最適組合"]
-)
+# 主畫面：兩個 Tab
+tab_select, tab_result = st.tabs(["📋 標的選擇", "📊 分析結果"])
 
 with tab_select:
     st.subheader("選擇要納入的標的")
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
 
     with col1:
         st.markdown("**債券（94檔）**")
-        bond_names = {f"{v['issuer']} {v['coupon']}% {v['maturity']}": k
-                      for k, v in LOCAL_DB.items()}
+        bond_names = {
+            f"{v['issuer']} {v['coupon']}% {v['maturity']}": k
+            for k, v in LOCAL_DB.items()
+        }
         selected_bond_names = st.multiselect(
             "選擇債券（可多選）",
             options=list(bond_names.keys()),
@@ -472,17 +558,23 @@ with tab_select:
             default=[]
         )
 
-    if extra_tickers:
-        st.info(f"已加入自選股票/ETF：{', '.join(extra_tickers)}")
+    with col3:
+        st.markdown("**自選股票/ETF**")
+        extra_input = st.text_area(
+            "輸入代號（每行一個或空白隔開）",
+            placeholder="例如：\nAAPL\nTSLA\nSPY",
+            height=180
+        )
+        extra_tickers = [t.strip().upper() for t in extra_input.replace(",", " ").split() if t.strip()]
 
     total_selected = len(selected_bonds) + len(selected_funds) + len(extra_tickers)
     if total_selected < 2:
         st.warning("請至少選擇 2 個標的！")
     else:
-        st.success(f"已選擇 {total_selected} 個標的（債券 {len(selected_bonds)} + 基金 {len(selected_funds)} + 股票 {len(extra_tickers)}）")
+        st.success(f"已選擇 {total_selected} 個標的（債券 {len(selected_bonds)} + 基金 {len(selected_funds)} + 股票/ETF {len(extra_tickers)}）")
 
-    run_btn = st.button("開始計算最適組合", type="primary", use_container_width=True,
-                        disabled=(total_selected < 2))
+    run_btn = st.button("🚀 開始計算最適組合", type="primary",
+                        use_container_width=True, disabled=(total_selected < 2))
 
 # ==========================================
 # 執行計算
@@ -491,85 +583,67 @@ if "result_ready" not in st.session_state:
     st.session_state.result_ready = False
 
 if run_btn and total_selected >= 2:
-    with st.spinner("正在讀取資料並計算中..."):
+    with st.spinner("正在讀取資料並計算中，請稍候..."):
         try:
-            end_date = pd.Timestamp.today()
+            end_date   = pd.Timestamp.today()
             start_date = end_date - pd.DateOffset(years=years)
 
             all_series = {}
             labels = []
 
-            # 1. 讀取債券資料（含息總報酬）
+            # 1. 債券（含息總報酬）
             if selected_bonds:
                 bond_sheets = list_sheets_in_folder(BOND_FOLDER_ID)
 
-                # 先下載 VCLT 和 LQD 用於補齊
                 vclt_raw = yf.download("VCLT", start=start_date - pd.DateOffset(years=3),
-                                       end=end_date, auto_adjust=True, progress=False)["Close"]
-                lqd_raw = yf.download("LQD", start=start_date - pd.DateOffset(years=3),
-                                      end=end_date, auto_adjust=True, progress=False)["Close"]
-
-                if hasattr(vclt_raw, "squeeze"):
-                    vclt_raw = vclt_raw.squeeze()
-                if hasattr(lqd_raw, "squeeze"):
-                    lqd_raw = lqd_raw.squeeze()
-
+                                       end=end_date, auto_adjust=True, progress=False)["Close"].squeeze()
+                lqd_raw  = yf.download("LQD",  start=start_date - pd.DateOffset(years=3),
+                                       end=end_date, auto_adjust=True, progress=False)["Close"].squeeze()
                 vclt_ret = vclt_raw.pct_change().dropna()
-                lqd_ret = lqd_raw.pct_change().dropna()
+                lqd_ret  = lqd_raw.pct_change().dropna()
 
                 for isin in selected_bonds:
-                    info = LOCAL_DB[isin]
-                    label = f"{info['issuer']}"
+                    info  = LOCAL_DB[isin]
+                    label = info["issuer"]
 
-                    # 找對應試算表
                     sheet_id = None
-                    for sheet_name, sid in bond_sheets.items():
-                        if isin in sheet_name:
+                    for sname, sid in bond_sheets.items():
+                        if isin in sname:
                             sheet_id = sid
                             break
-
                     if not sheet_id:
                         st.warning(f"找不到 {label} 的資料，跳過")
                         continue
 
                     price_s = read_sheet_as_series(sheet_id, label)
-                    # 計算含息總報酬指數
-                    tri = total_return_series(price_s, info["coupon"])
+                    tri     = total_return_series(price_s, info["coupon"])
                     tri_ret = tri.pct_change().dropna()
-
-                    # 篩選期間
                     tri_ret = tri_ret[tri_ret.index >= start_date]
 
-                    # 如果資料不足，補 VCLT 或 LQD
                     maturity_year = int(info["maturity"])
-                    proxy_ret = vclt_ret if maturity_year >= CUTOFF_YEAR else lqd_ret
-                    proxy_label = "VCLT" if maturity_year >= CUTOFF_YEAR else "LQD"
+                    proxy_ret   = vclt_ret if maturity_year >= CUTOFF_YEAR else lqd_ret
+                    proxy_label = "VCLT"   if maturity_year >= CUTOFF_YEAR else "LQD"
 
                     if len(tri_ret) < 20:
-                        # 資料太少，直接用 proxy
                         proxy_filtered = proxy_ret[proxy_ret.index >= start_date]
                         all_series[label] = proxy_filtered
-                        labels.append(label)
                         st.info(f"{label}：資料不足，使用 {proxy_label} 替代")
                     else:
-                        # 補前段資料
                         first_date = tri_ret.index[0]
                         if first_date > start_date:
-                            pre_ret = proxy_ret[
-                                (proxy_ret.index >= start_date) & (proxy_ret.index < first_date)
-                            ]
+                            pre_ret  = proxy_ret[(proxy_ret.index >= start_date) & (proxy_ret.index < first_date)]
                             combined = pd.concat([pre_ret.rename(label), tri_ret])
                         else:
                             combined = tri_ret
                         all_series[label] = combined
-                        labels.append(label)
+                    labels.append(label)
 
-            # 2. 讀取基金資料
+            # 2. 基金
             if selected_funds:
                 fund_sheets = list_sheets_in_folder(FUND_FOLDER_ID)
                 for ticker in selected_funds:
                     fund_name = FUND_DB[ticker]
-                    sheet_id = fund_sheets.get(ticker)
+                    sheet_id  = fund_sheets.get(ticker)
                     if not sheet_id:
                         st.warning(f"找不到 {fund_name} 的資料，跳過")
                         continue
@@ -582,14 +656,11 @@ if run_btn and total_selected >= 2:
                     all_series[fund_name] = ret
                     labels.append(fund_name)
 
-            # 3. 抓股票/ETF
+            # 3. 自選股票/ETF
             if extra_tickers:
                 raw = yf.download(extra_tickers, start=start_date, end=end_date,
                                   auto_adjust=True, progress=False)
-                if "Close" in raw.columns:
-                    prices = raw["Close"]
-                else:
-                    prices = raw
+                prices = raw["Close"] if "Close" in raw.columns else raw
                 if isinstance(prices, pd.Series):
                     prices = prices.to_frame(name=extra_tickers[0])
                 for ticker in extra_tickers:
@@ -602,7 +673,6 @@ if run_btn and total_selected >= 2:
                 st.error("有效標的不足 2 個，無法計算！")
                 st.stop()
 
-            # 合併所有報酬率，取交集日期
             returns_df = pd.DataFrame(all_series).dropna()
             returns_df = returns_df[returns_df.index >= start_date]
 
@@ -610,24 +680,29 @@ if run_btn and total_selected >= 2:
                 st.error("有效交集資料不足 30 天，請換標的或延長期間！")
                 st.stop()
 
-            # 計算統計數據
             ann_ret, ann_vol, sharpe_r = calc_stats(returns_df)
-
-            # 執行優化
             weights = run_optimization(returns_df, method=method, target_return=target_return)
 
-            # 儲存結果
-            st.session_state.result_ready = True
-            st.session_state.returns_df = returns_df
-            st.session_state.ann_ret = ann_ret
-            st.session_state.ann_vol = ann_vol
-            st.session_state.sharpe_r = sharpe_r
-            st.session_state.weights = weights
-            st.session_state.labels = labels
-            st.session_state.period_label = period_label
-            st.session_state.method_label = method_label
+            # 組合整體指標
+            cov        = returns_df.cov() * 252
+            port_ret   = float(np.dot(weights, ann_ret))
+            port_vol   = float(np.sqrt(np.dot(weights.T, np.dot(cov, weights))))
+            port_sharpe= (port_ret - RISK_FREE_RATE) / port_vol
 
-            st.success("計算完成！請查看各分頁結果。")
+            st.session_state.update({
+                "result_ready": True,
+                "returns_df":   returns_df,
+                "ann_ret":      ann_ret,
+                "ann_vol":      ann_vol,
+                "sharpe_r":     sharpe_r,
+                "weights":      weights,
+                "labels":       labels,
+                "port_ret":     port_ret,
+                "port_vol":     port_vol,
+                "port_sharpe":  port_sharpe,
+                "period_label": period_label,
+                "method_label": method_label,
+            })
 
         except Exception as e:
             st.error(f"發生錯誤：{e}")
@@ -635,134 +710,139 @@ if run_btn and total_selected >= 2:
             st.code(traceback.format_exc())
 
 # ==========================================
-# 顯示結果
+# 顯示結果（全部在同一個 Tab）
 # ==========================================
 if st.session_state.result_ready:
-    returns_df = st.session_state.returns_df
-    ann_ret = st.session_state.ann_ret
-    ann_vol = st.session_state.ann_vol
-    sharpe_r = st.session_state.sharpe_r
-    weights = st.session_state.weights
-    labels = st.session_state.labels
-
-    with tab_corr:
-        st.subheader("相關係數矩陣")
-        corr = returns_df.corr()
-        fig_corr = go.Figure(go.Heatmap(
-            z=corr.values,
-            x=corr.columns.tolist(),
-            y=corr.index.tolist(),
-            colorscale="RdYlGn",
-            zmin=-1, zmax=1,
-            text=np.round(corr.values, 2),
-            texttemplate="%{text}",
-            textfont={"size": 9}
-        ))
-        fig_corr.update_layout(height=500, margin=dict(l=20, r=20, t=20, b=20))
-        st.plotly_chart(fig_corr, use_container_width=True)
-
-    with tab_frontier:
-        st.subheader("有效前緣")
-        with st.spinner("模擬有效前緣中..."):
-            vols, rets = efficient_frontier(returns_df)
-
-        # 最大夏普點
-        opt_w_sharpe = run_optimization(returns_df, method="max_sharpe")
-        cov = returns_df.cov() * 252
-        opt_vol = np.sqrt(np.dot(opt_w_sharpe.T, np.dot(cov, opt_w_sharpe)))
-        opt_ret = np.dot(opt_w_sharpe, ann_ret)
-
-        # 最小風險點
-        opt_w_minvol = run_optimization(returns_df, method="min_vol")
-        minvol_vol = np.sqrt(np.dot(opt_w_minvol.T, np.dot(cov, opt_w_minvol)))
-        minvol_ret = np.dot(opt_w_minvol, ann_ret)
-
-        fig_ef = go.Figure()
-        fig_ef.add_trace(go.Scatter(
-            x=vols, y=rets, mode="lines",
-            line=dict(color="#1565c0", width=2.5),
-            name="有效前緣"
-        ))
-        # 各標的散點
-        fig_ef.add_trace(go.Scatter(
-            x=ann_vol.values, y=ann_ret.values, mode="markers+text",
-            text=labels, textposition="top center",
-            marker=dict(size=8, color="#888"),
-            name="各標的"
-        ))
-        # 最大夏普
-        fig_ef.add_trace(go.Scatter(
-            x=[opt_vol], y=[opt_ret], mode="markers",
-            marker=dict(size=14, color="#c8a84b", symbol="star"),
-            name="最大夏普"
-        ))
-        # 最小風險
-        fig_ef.add_trace(go.Scatter(
-            x=[minvol_vol], y=[minvol_ret], mode="markers",
-            marker=dict(size=12, color="#2e7d32", symbol="diamond"),
-            name="最小風險"
-        ))
-        fig_ef.update_layout(
-            xaxis_title="年化波動率", yaxis_title="年化報酬率",
-            hovermode="closest", height=480,
-            xaxis=dict(tickformat=".1%"), yaxis=dict(tickformat=".1%")
-        )
-        st.plotly_chart(fig_ef, use_container_width=True)
+    returns_df  = st.session_state.returns_df
+    ann_ret     = st.session_state.ann_ret
+    ann_vol     = st.session_state.ann_vol
+    sharpe_r    = st.session_state.sharpe_r
+    weights     = st.session_state.weights
+    labels      = st.session_state.labels
+    port_ret    = st.session_state.port_ret
+    port_vol    = st.session_state.port_vol
+    port_sharpe = st.session_state.port_sharpe
 
     with tab_result:
+
+        # ── A. 組合整體績效 KPI ──
         st.subheader(f"最適組合：{st.session_state.method_label}")
-
-        # 各標的統計表
-        stats_data = []
-        for i, lbl in enumerate(labels):
-            stats_data.append({
-                "標的": lbl,
-                "建議配置": f"{weights[i]:.1%}",
-                "年化報酬": f"{ann_ret.iloc[i]:.2%}",
-                "年化波動": f"{ann_vol.iloc[i]:.2%}",
-                "夏普比率": f"{sharpe_r.iloc[i]:.2f}",
-            })
-        st.dataframe(pd.DataFrame(stats_data), use_container_width=True, hide_index=True)
-
-        # 組合整體績效
-        port_ret = np.dot(weights, ann_ret)
-        cov = returns_df.cov() * 252
-        port_vol = np.sqrt(np.dot(weights.T, np.dot(cov, weights)))
-        port_sharpe = (port_ret - RISK_FREE_RATE) / port_vol
-
         k1, k2, k3 = st.columns(3)
         k1.metric("組合年化報酬", f"{port_ret:.2%}")
         k2.metric("組合年化波動", f"{port_vol:.2%}")
         k3.metric("組合夏普比率", f"{port_sharpe:.2f}")
 
-        # 圓餅圖
-        sig_weights = [(lbl, w) for lbl, w in zip(labels, weights) if w > 0.01]
-        if sig_weights:
-            pie_labels, pie_values = zip(*sig_weights)
-            fig_pie = go.Figure(go.Pie(
-                labels=pie_labels, values=pie_values, hole=0.4,
-                textinfo="label+percent"
-            ))
-            fig_pie.update_layout(height=400, margin=dict(t=20, b=0))
-            st.plotly_chart(fig_pie, use_container_width=True)
+        # VaR 說明
+        var_68 = port_ret - port_vol
+        var_95 = port_ret - 1.645 * port_vol
+        var_99 = port_ret - 2.326 * port_vol
+        st.markdown(f"""
+        | 信賴區間 | 最差情境 | 最佳情境 | 說明 |
+        |---|---|---|---|
+        | **68%（1σ）** | {var_68:.2%} | {port_ret + port_vol:.2%} | 約 1/3 機率超出此範圍 |
+        | **95%（1.645σ）** | {var_95:.2%} | {port_ret + 1.645*port_vol:.2%} | 約 1/20 機率超出此範圍 |
+        | **99%（2.326σ）** | {var_99:.2%} | {port_ret + 2.326*port_vol:.2%} | 約 1/100 機率超出此範圍 |
+        """)
+        st.caption("※ 基於常態分配假設，實際分佈可能有厚尾風險")
 
-        # 生成PDF
         st.markdown("---")
-        if st.button("生成 PDF 報告（密碼保護）", type="primary"):
+
+        # ── B. 各標的統計表 + 圓餅圖 ──
+        left_col, right_col = st.columns([3, 2])
+
+        with left_col:
+            st.markdown("**各標的統計**")
+            stats_data = []
+            for i, lbl in enumerate(labels):
+                stats_data.append({
+                    "標的": lbl,
+                    "配置": f"{weights[i]:.1%}",
+                    "年化報酬": f"{ann_ret.iloc[i]:.2%}",
+                    "年化波動": f"{ann_vol.iloc[i]:.2%}",
+                    "夏普": f"{sharpe_r.iloc[i]:.2f}",
+                })
+            st.dataframe(pd.DataFrame(stats_data), use_container_width=True, hide_index=True)
+
+        with right_col:
+            sig_weights = [(lbl, w) for lbl, w in zip(labels, weights) if w > 0.01]
+            if sig_weights:
+                pie_labels, pie_values = zip(*sig_weights)
+                fig_pie = go.Figure(go.Pie(
+                    labels=pie_labels, values=pie_values, hole=0.4,
+                    textinfo="label+percent"
+                ))
+                fig_pie.update_layout(height=320, margin=dict(t=10, b=0))
+                st.plotly_chart(fig_pie, use_container_width=True)
+
+        st.markdown("---")
+
+        # ── C. 有效前緣 ──
+        st.markdown("**有效前緣**")
+        with st.spinner("計算有效前緣中..."):
+            vols, rets = efficient_frontier(returns_df)
+
+        cov = returns_df.cov() * 252
+        opt_w_sharpe  = run_optimization(returns_df, method="max_sharpe")
+        opt_w_minvol  = run_optimization(returns_df, method="min_vol")
+        opt_vol_s = float(np.sqrt(np.dot(opt_w_sharpe.T, np.dot(cov, opt_w_sharpe))))
+        opt_ret_s = float(np.dot(opt_w_sharpe, ann_ret))
+        opt_vol_m = float(np.sqrt(np.dot(opt_w_minvol.T, np.dot(cov, opt_w_minvol))))
+        opt_ret_m = float(np.dot(opt_w_minvol, ann_ret))
+
+        fig_ef = go.Figure()
+        fig_ef.add_trace(go.Scatter(x=vols, y=rets, mode="lines",
+                                    line=dict(color="#1565c0", width=2.5), name="有效前緣"))
+        fig_ef.add_trace(go.Scatter(x=ann_vol.values, y=ann_ret.values,
+                                    mode="markers+text", text=labels, textposition="top center",
+                                    marker=dict(size=8, color="#888"), name="各標的"))
+        fig_ef.add_trace(go.Scatter(x=[opt_vol_s], y=[opt_ret_s], mode="markers",
+                                    marker=dict(size=14, color="#c8a84b", symbol="star"),
+                                    name="最大夏普"))
+        fig_ef.add_trace(go.Scatter(x=[opt_vol_m], y=[opt_ret_m], mode="markers",
+                                    marker=dict(size=12, color="#2e7d32", symbol="diamond"),
+                                    name="最小風險"))
+        fig_ef.update_layout(
+            xaxis_title="年化波動率", yaxis_title="年化報酬率",
+            hovermode="closest", height=420,
+            xaxis=dict(tickformat=".1%"), yaxis=dict(tickformat=".1%")
+        )
+        st.plotly_chart(fig_ef, use_container_width=True)
+
+        st.markdown("---")
+
+        # ── D. 相關係數矩陣 ──
+        st.markdown("**相關係數矩陣**")
+        corr = returns_df.corr()
+        fig_corr = go.Figure(go.Heatmap(
+            z=corr.values,
+            x=[l[:10] for l in corr.columns.tolist()],
+            y=[l[:10] for l in corr.index.tolist()],
+            colorscale="RdYlGn", zmin=-1, zmax=1,
+            text=np.round(corr.values, 2),
+            texttemplate="%{text}", textfont={"size": 9}
+        ))
+        fig_corr.update_layout(height=420, margin=dict(l=20, r=20, t=20, b=20))
+        st.plotly_chart(fig_corr, use_container_width=True)
+
+        st.markdown("---")
+
+        # ── E. 生成 PDF ──
+        if st.button("🖨️ 生成 PDF 報告（密碼保護）", type="primary"):
             with st.spinner("生成中..."):
                 pdf_buf = generate_pdf(
                     weights, labels, ann_ret, ann_vol, sharpe_r,
-                    returns_df.corr(),
+                    returns_df, port_ret, port_vol, port_sharpe,
                     st.session_state.method_label,
                     st.session_state.period_label
                 )
                 st.download_button(
-                    "下載 PDF 報告",
+                    "📥 下載 PDF 報告",
                     data=pdf_buf,
                     file_name=f"最適組合_{datetime.today().strftime('%Y%m%d')}.pdf",
-                    mime="application/pdf"
+                    mime="application/pdf",
+                    use_container_width=True
                 )
-                st.info("PDF 密碼：5428")
+                st.info("PDF 開啟密碼：**5428**")
 
 st.markdown("---")
 st.warning("⚠️ 本工具所有計算均基於歷史資料，不代表未來績效。僅供內部教育訓練使用，請勿外流。")
