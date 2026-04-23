@@ -299,8 +299,19 @@ def total_return_series(price_series, coupon_rate):
         tri.append(tri[-1] * (1 + price_ret + daily_coupon))
     return pd.Series(tri, index=price_series.index)
 
+def calc_annual_ret(price_series):
+    """按年度計算平均年化報酬（排除當年度），與智能投資組合優化器一致"""
+    ann = price_series.resample('YE').last().pct_change().dropna()
+    current_year = datetime.now().year
+    if current_year in ann.index.year:
+        ann = ann[ann.index.year != current_year]
+    return ann.mean() if len(ann) > 0 else price_series.pct_change().mean() * 252
+
 def calc_stats(returns_df):
-    ann_ret = returns_df.mean() * 252
+    """計算年化報酬（年度平均）、標準差、夏普比率"""
+    # 先從 returns_df 還原價格指數，再算年度報酬
+    price_df = (1 + returns_df).cumprod()
+    ann_ret = price_df.apply(calc_annual_ret)
     ann_vol = returns_df.std() * np.sqrt(252)
     sharpe = (ann_ret - RISK_FREE_RATE) / ann_vol
     return ann_ret, ann_vol, sharpe
@@ -667,11 +678,12 @@ if run_btn and total_selected >= 2:
             ann_ret, ann_vol, sharpe_r = calc_stats(returns_df)
             weights = run_optimization(returns_df, method=method, target_return=target_return)
             cov = returns_df.cov() * 252
-            port_ret    = float(np.dot(weights, ann_ret))
+            # 組合年化報酬：用實際組合日報酬序列算年度平均
+            port_daily_ret = returns_df.dot(weights)
+            port_ret    = float(calc_annual_ret((1 + port_daily_ret).cumprod()))
             port_vol    = float(np.sqrt(np.dot(weights.T, np.dot(cov, weights))))
             port_sharpe = (port_ret - RISK_FREE_RATE) / port_vol
             port_mdd    = float(calc_portfolio_drawdown(returns_df, weights))
-            # 各標的 max drawdown
             mdd_series  = returns_df.apply(calc_max_drawdown)
 
             st.session_state.update({
