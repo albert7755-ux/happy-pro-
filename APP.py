@@ -305,6 +305,18 @@ def calc_stats(returns_df):
     sharpe = (ann_ret - RISK_FREE_RATE) / ann_vol
     return ann_ret, ann_vol, sharpe
 
+def calc_max_drawdown(returns_series):
+    """計算最大回撤"""
+    cum = (1 + returns_series).cumprod()
+    peak = cum.cummax()
+    drawdown = (cum - peak) / peak
+    return drawdown.min()
+
+def calc_portfolio_drawdown(returns_df, weights):
+    """計算投資組合的最大回撤"""
+    port_returns = returns_df.dot(weights)
+    return calc_max_drawdown(port_returns)
+
 def run_optimization(returns_df, method="max_sharpe", target_return=0.08):
     n = len(returns_df.columns)
     mean_ret = returns_df.mean() * 252
@@ -658,6 +670,9 @@ if run_btn and total_selected >= 2:
             port_ret    = float(np.dot(weights, ann_ret))
             port_vol    = float(np.sqrt(np.dot(weights.T, np.dot(cov, weights))))
             port_sharpe = (port_ret - RISK_FREE_RATE) / port_vol
+            port_mdd    = float(calc_portfolio_drawdown(returns_df, weights))
+            # 各標的 max drawdown
+            mdd_series  = returns_df.apply(calc_max_drawdown)
 
             st.session_state.update({
                 "result_ready": True,
@@ -665,6 +680,7 @@ if run_btn and total_selected >= 2:
                 "ann_ret": ann_ret, "ann_vol": ann_vol, "sharpe_r": sharpe_r,
                 "weights": weights, "labels": labels,
                 "port_ret": port_ret, "port_vol": port_vol, "port_sharpe": port_sharpe,
+                "port_mdd": port_mdd, "mdd_series": mdd_series,
                 "period_label": period_label, "method_label": method_label,
             })
         except Exception as e:
@@ -685,13 +701,16 @@ if st.session_state.result_ready:
     port_ret    = st.session_state.port_ret
     port_vol    = st.session_state.port_vol
     port_sharpe = st.session_state.port_sharpe
+    port_mdd    = st.session_state.get("port_mdd", None)
+    mdd_series  = st.session_state.get("mdd_series", None)
 
     with tab_result:
         st.subheader(f"最適組合：{st.session_state.method_label}")
-        k1, k2, k3 = st.columns(3)
+        k1, k2, k3, k4 = st.columns(4)
         k1.metric("組合年化報酬", f"{port_ret:.2%}")
         k2.metric("組合年化波動", f"{port_vol:.2%}")
         k3.metric("組合夏普比率", f"{port_sharpe:.2f}")
+        k4.metric("最大回撤 MDD", f"{port_mdd:.2%}" if port_mdd is not None else "-")
         var_68 = port_ret - port_vol
         var_95 = port_ret - 1.645 * port_vol
         var_99 = port_ret - 2.326 * port_vol
@@ -708,7 +727,17 @@ if st.session_state.result_ready:
         left_col, right_col = st.columns([3, 2])
         with left_col:
             st.markdown("**各標的統計**")
-            stats_data = [{"標的": lbl, "配置": f"{weights[i]:.1%}", "年化報酬": f"{ann_ret.iloc[i]:.2%}", "年化波動": f"{ann_vol.iloc[i]:.2%}", "夏普": f"{sharpe_r.iloc[i]:.2f}"} for i, lbl in enumerate(labels)]
+            stats_data = []
+            for i, lbl in enumerate(labels):
+                mdd_val = f"{mdd_series[lbl]:.2%}" if mdd_series is not None and lbl in mdd_series else "-"
+                stats_data.append({
+                    "標的": lbl,
+                    "配置": f"{weights[i]:.1%}",
+                    "年化報酬": f"{ann_ret.iloc[i]:.2%}",
+                    "年化波動": f"{ann_vol.iloc[i]:.2%}",
+                    "夏普": f"{sharpe_r.iloc[i]:.2f}",
+                    "最大回撤": mdd_val,
+                })
             st.dataframe(pd.DataFrame(stats_data), use_container_width=True, hide_index=True)
         with right_col:
             sig_weights = [(lbl, w) for lbl, w in zip(labels, weights) if w > 0.01]
