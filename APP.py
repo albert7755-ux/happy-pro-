@@ -164,9 +164,46 @@ FUND_DB = {
     "F00001EQPP_FO": "富邦台美雙星多重",
 }
 
-# ==========================================
-# Google Drive 連線
-# ==========================================
+# FINRA ISIN → ticker 對照（用於比對 bond-data 試算表名稱）
+FINRA_ISIN_TO_TICKER = {
+    "US03769MAC01": "APO5813716",
+    "US09062XAG88": "BIIB4981508",
+    "US084670BK32": "BRK3963113",
+    "US035242AM81": "BUD4327587",
+    "US125523AK66": "CI4866401",
+    "US125523CF53": "CI5003121",
+    "US20030NBU46": "CMCS4382861",
+    "US31428XCA28": "FBUO6172956",
+    "US375558BD48": "GILD4287890",
+    "US37045VAT70": "GM4181484",
+    "US404280AG49": "HBC US404280AG49",
+    "US449276AF17": "IBM5449458",
+    "US45866FAX24": "ICE5414190",
+    "US191216CQ13": "KO4969567",
+    "US02209SAR40": "MO4065695",
+    "US02209SAV51": "MO4403915",
+    "US61747YDY86": "MS4204532",
+    "US64110LBA35": "NFLX5862368",
+    "US747525AK99": "QCOM4246685",
+    "XS1049699926": "SCBFF4110430",
+    "US854502AJ02": "SDBO4820048",
+    "US854502AA92": "SWK.GM",
+    "US00206RCQ39": "T4237450",
+    "US00206RCU41": "T4451561",
+    "US91159HJN17": "USB5600582",
+    "US92556HAC16": "VIA4987234",
+    "US92343VGW81": "VZ4968008",
+    "US92343VFD10": "VZ5363445",
+}
+
+# ISIN → LUXSE ticker 對照
+LUXSE_ISIN_TO_TICKER = {
+    "US06051GLU12": "US06051GLU12",
+    "US037833EW60": "US037833EW60",
+    "US46625HHF01": "US46625HHF01",
+    "US172967HS33": "US172967HS33",
+    "XS1807174559": "XS1807174559",
+}
 @st.cache_resource
 def get_gspread_client():
     creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
@@ -535,10 +572,25 @@ if run_btn and total_selected >= 2:
                     info  = BOND_DB[isin]
                     label = info["issuer"]
                     sheet_id = None
-                    for sname, sid in bond_sheets.items():
-                        if isin in sname:
-                            sheet_id = sid
-                            break
+                    # 先查 FINRA 對照表
+                    finra_ticker = FINRA_ISIN_TO_TICKER.get(isin)
+                    if finra_ticker:
+                        for sname, sid in bond_sheets.items():
+                            if finra_ticker in sname:
+                                sheet_id = sid
+                                break
+                    # 再查 LUXSE
+                    if not sheet_id and isin in LUXSE_ISIN_TO_TICKER:
+                        for sname, sid in bond_sheets.items():
+                            if "LUXSE" in sname and isin in sname:
+                                sheet_id = sid
+                                break
+                    # 最後用 ISIN 直接比對（SWB、EUROTLX）
+                    if not sheet_id:
+                        for sname, sid in bond_sheets.items():
+                            if isin in sname:
+                                sheet_id = sid
+                                break
                     if not sheet_id:
                         st.warning(f"找不到 {label} 的資料，跳過")
                         continue
