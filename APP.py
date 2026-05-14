@@ -566,7 +566,6 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
     ]))
     story.append(w_tbl)
     story.append(Spacer(1, 0.4*cm))
-    story.append(PageBreak())
     story.append(Paragraph("三、相關係數矩陣", h2_s))
     story.append(HRFlowable(width="100%", thickness=2, color=GOLD, spaceAfter=8))
     corr = returns_df.corr()
@@ -599,48 +598,9 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
     story.append(Spacer(1, 0.3*cm))
     story.append(Paragraph("※ 紅底=高相關(>0.7)，綠底=低相關(<0.3)。低相關標的有助分散風險。", small_s))
 
-    # ── 四、月報酬率 ──
+    # ── 四、持有期間正報酬機率 ──
     story.append(PageBreak())
-    story.append(Paragraph("四、月報酬率", h2_s))
-    story.append(HRFlowable(width="100%", thickness=2, color=GOLD, spaceAfter=8))
-    monthly_df = (1 + returns_df).resample("ME").prod() - 1
-    port_monthly = (1 + returns_df.dot(weights)).resample("ME").prod() - 1
-    monthly_df.insert(0, "投資組合", port_monthly)
-    monthly_df = monthly_df.sort_index(ascending=False).head(36)  # 最近3年
-    col_names = ["月份"] + [lbl[:8] for lbl in monthly_df.columns.tolist()]
-    m_rows = [col_names]
-    for idx, row in monthly_df.iterrows():
-        r = [idx.strftime("%Y-%m")]
-        for v in row.values:
-            r.append(f"{v:.1%}")
-        m_rows.append(r)
-    n_mcols = len(col_names)
-    m_tbl = Table(m_rows, colWidths=[17*cm/n_mcols]*n_mcols)
-    m_style = [
-        ("BACKGROUND",(0,0),(-1,0),NAVY),("TEXTCOLOR",(0,0),(-1,0),WHITE),
-        ("FONTNAME",(0,0),(-1,-1),font),("FONTSIZE",(0,0),(-1,-1),7),
-        ("ALIGN",(0,0),(-1,-1),"CENTER"),("GRID",(0,0),(-1,-1),0.3,colors.HexColor("#dddddd")),
-        ("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3),
-        ("ROWBACKGROUNDS",(0,1),(-1,-1),[BG,WHITE]),
-    ]
-    import numpy as _np
-    for ri in range(1, len(m_rows)):
-        for ci in range(1, n_mcols):
-            try:
-                v = float(m_rows[ri][ci].replace("%","")) / 100
-                if v > 0:
-                    m_style.append(("TEXTCOLOR",(ci,ri),(ci,ri),colors.HexColor("#1b5e20")))
-                elif v < 0:
-                    m_style.append(("TEXTCOLOR",(ci,ri),(ci,ri),colors.HexColor("#b71c1c")))
-            except: pass
-    m_tbl.setStyle(TableStyle(m_style))
-    story.append(m_tbl)
-    story.append(Spacer(1, 0.3*cm))
-    story.append(Paragraph("※ 顯示最近 36 個月，綠色=正報酬，紅色=負報酬。", small_s))
-
-    # ── 五、持有期間正報酬機率 ──
-    story.append(Spacer(1, 0.4*cm))
-    story.append(Paragraph("五、持有期間正報酬機率", h2_s))
+    story.append(Paragraph("四、持有期間正報酬機率", h2_s))
     story.append(HRFlowable(width="100%", thickness=2, color=GOLD, spaceAfter=8))
     holding_periods_pdf = {"1個月":21,"3個月":63,"6個月":126,"1年":252,"2年":504,"3年":756}
     port_daily_pdf = returns_df.dot(weights)
@@ -690,7 +650,7 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
 
     if cf_items_pdf and monthly_total_pdf:
         story.append(PageBreak())
-        story.append(Paragraph("六、配息現金流試算", h2_s))
+        story.append(Paragraph("五、配息現金流試算", h2_s))
         story.append(HRFlowable(width="100%", thickness=2, color=GOLD, spaceAfter=8))
 
         # KPI 摘要
