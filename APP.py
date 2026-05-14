@@ -774,7 +774,7 @@ if st.session_state.result_ready:
             sig_weights = [(lbl, w) for lbl, w in zip(labels, weights) if w > 0.01]
             if sig_weights:
                 pie_labels, pie_values = zip(*sig_weights)
-                fig_pie = go.Figure(go.Pie(labels=pie_labels, values=pie_values, hole=0.4, textinfo="label+percent"))
+                fig_pie = go.Figure(go.Pie(labels=pie_labels, values=pie_values, hole=0.4, textinfo="none", showlegend=True))
                 fig_pie.update_layout(height=320, margin=dict(t=10, b=0))
                 st.plotly_chart(fig_pie, use_container_width=True)
         st.markdown("---")
@@ -806,41 +806,52 @@ if st.session_state.result_ready:
         st.markdown("---")
 
         st.markdown("**持有期間愈長，正報酬機率**")
-        port_daily_ret_prob = returns_df.dot(weights)
         holding_periods = {
             "1個月": 21, "3個月": 63, "6個月": 126,
             "1年": 252, "2年": 504, "3年": 756
         }
-        prob_rows = []
-        for label_p, days in holding_periods.items():
-            rolling_ret = (1 + port_daily_ret_prob).rolling(days).apply(np.prod, raw=True) - 1
-            rolling_ret = rolling_ret.dropna()
-            if len(rolling_ret) > 0:
-                win_rate = (rolling_ret > 0).mean()
-                avg_gain = rolling_ret[rolling_ret > 0].mean() if (rolling_ret > 0).any() else 0
-                avg_loss = rolling_ret[rolling_ret <= 0].mean() if (rolling_ret <= 0).any() else 0
-                prob_rows.append({
-                    "持有期間": label_p,
-                    "正報酬機率": f"{win_rate:.1%}",
-                    "獲利時平均報酬": f"{avg_gain:.2%}",
-                    "虧損時平均報酬": f"{avg_loss:.2%}",
-                    "樣本數": len(rolling_ret),
-                })
-        if prob_rows:
-            prob_df = pd.DataFrame(prob_rows)
-            # 用顏色標示正報酬機率高低
-            def color_winrate(val):
-                try:
-                    v = float(val.replace("%","")) / 100
-                    if v >= 0.8: return "background-color: #c8e6c9; color: #1b5e20"
-                    elif v >= 0.6: return "background-color: #fff9c4; color: #f57f17"
-                    else: return "background-color: #ffcdd2; color: #b71c1c"
-                except: return ""
-            st.dataframe(
-                prob_df.style.map(color_winrate, subset=["正報酬機率"]),
-                use_container_width=True, hide_index=True
-            )
-            st.caption("※ 基於歷史滾動報酬計算，樣本期間越短樣本數越多，結果僅供參考。")
+
+        def calc_win_rate(ret_series, days):
+            rolling = (1 + ret_series).rolling(days).apply(np.prod, raw=True) - 1
+            rolling = rolling.dropna()
+            if len(rolling) == 0:
+                return None
+            return (rolling > 0).mean()
+
+        # 建立橫軸=標的、縱軸=持有期間的矩陣
+        port_daily_ret_prob = returns_df.dot(weights)
+        all_series = {"📐 投資組合": port_daily_ret_prob}
+        for lbl in labels:
+            if lbl in returns_df.columns:
+                all_series[lbl] = returns_df[lbl]
+
+        prob_matrix = {}
+        for period_name, days in holding_periods.items():
+            row = {}
+            for name, series in all_series.items():
+                wr = calc_win_rate(series, days)
+                row[name] = f"{wr:.1%}" if wr is not None else "-"
+            prob_matrix[period_name] = row
+
+        prob_df = pd.DataFrame(prob_matrix).T
+        prob_df.index.name = "持有期間"
+        prob_df = prob_df.reset_index()
+
+        def color_winrate(val):
+            try:
+                v = float(str(val).replace("%","")) / 100
+                if v >= 0.8: return "background-color: #c8e6c9; color: #1b5e20; font-weight:bold"
+                elif v >= 0.6: return "background-color: #fff9c4; color: #f57f17"
+                else: return "background-color: #ffcdd2; color: #b71c1c"
+            except: return ""
+
+        # 所有欄位（除了持有期間）都上色
+        color_cols = [c for c in prob_df.columns if c != "持有期間"]
+        st.dataframe(
+            prob_df.style.map(color_winrate, subset=color_cols),
+            use_container_width=True, hide_index=True
+        )
+        st.caption("※ 基於歷史滾動報酬計算。綠=≥80%、黃=60-80%、紅=<60%，結果僅供參考。")
         st.markdown("---")
 
         st.markdown("**相關係數矩陣**")
