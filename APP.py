@@ -146,6 +146,96 @@ LOCAL_DB = {
     "US458140CA64": {"issuer": "英特爾公司債5", "coupon": 4.15, "maturity": "2032"},
 }
 
+
+# ==========================================
+# 現金流試算常數
+# ==========================================
+FUND_YIELD_DB = {
+    "F00001DRQQ_FO": 0.0900,
+    "F0GBR04SG1_FO": 0.0850,
+    "F00000ZXFV_FO": 0.0938,
+    "F00000PR1I_FO": 0.0849,
+    "F0000176Y4_FO": 0.0819,
+    "F000011JGT_FO": 0.0700,
+    "F0GBR04MRL_FO": 0.0781,
+    "FOGBR05KHT_FO": 0.0850,
+    "F0000000P6_FO": 0.0743,
+    "F0GBR04AMK_FO": 0.0660,
+    "F00000MLER_FO": 0.0551,
+    "F00000T0K2_FO": 0.1259,
+    "F00000T1CG_FO": 0.0885,
+    "F00000V557_FO": 0.0824,
+    "F00001EQPP_FO": 0.0904,
+}
+
+BOND_CURRENT_YIELD = {
+    "US88579YBD22": 0.0489, "US084664CQ25": 0.0484, "XS1807174559": 0.0520,
+    "US023135BJ40": 0.0476, "US375558BK80": 0.0483, "US037833CH12": 0.0472,
+    "US002824BH26": 0.0505, "XS1508675508": 0.0518, "US02209SAV51": 0.0498,
+    "US92343VCK89": 0.0520, "US594918BT09": 0.0442, "US125523CF53": 0.0522,
+    "US20030NBU46": 0.0469, "US375558BD48": 0.0508, "US02079KBN63": 0.0521,
+    "US30303M8X35": 0.0546, "US747525AK99": 0.0513, "US25468PDB94": 0.0468,
+    "US717081DK61": 0.0481, "US449276AF17": 0.0543, "US02209SAR40": 0.0550,
+    "US12572QAF28": 0.0513, "US037833AL42": 0.0442, "US084670BK32": 0.0460,
+    "US594918BZ68": 0.0412, "US717081EC37": 0.0415, "US035242AM81": 0.0465,
+    "US91159HJN17": 0.0543, "US55608KBG94": 0.0521, "US686330AR22": 0.0498,
+    "USG91139AL26": 0.0442, "US92556HAC16": 0.0741, "US31428XCA28": 0.0544,
+    "US09062XAG88": 0.0468, "US37045VAT70": 0.0595, "US854502AJ02": 0.0541,
+    "US00206RCU41": 0.0556, "US94974BGU89": 0.0534, "US172967KR13": 0.0531,
+    "US00206RCQ39": 0.0530, "US58013MFA71": 0.0517, "US42824CAY57": 0.0604,
+    "US09062XAD57": 0.0543, "US37045VAJ98": 0.0564, "US61747YDY86": 0.0492,
+    "US94974BGE48": 0.0525, "US172967HS33": 0.0546, "XS1049699926": 0.0559,
+    "US404280AQ21": 0.0530, "US37045VAF76": 0.0600, "US92553PAP71": 0.0638,
+    "US00206RBH49": 0.0492, "US71568QAB32": 0.0560, "US854502AA92": 0.0527,
+    "US50076QAN60": 0.0594, "XS2885079702": 0.0515, "US46625HHF01": 0.0557,
+    "US37045VAP58": 0.0524, "US126650CY46": 0.0495, "US38141GFD16": 0.0594,
+    "US00206RDR03": 0.0504, "US404280AG49": 0.0576, "US38143YAC75": 0.0582,
+    "US925524AX89": 0.0700, "US37045VAK61": 0.0598, "XS3151416727": 0.0533,
+    "US06051GLU12": 0.0545, "XS2852920342": 0.0556, "US458140CA64": 0.0423,
+    "US02079KBP12": 0.0565, "US30303MAE21": 0.0563, "US64110LBA35": 0.0540,
+    "US03769MAC01": 0.0580, "US191216DS69": 0.0530, "US92343VGW81": 0.0550,
+    "XS2747599509": 0.0575, "US29736RAU41": 0.0515, "US037833EW60": 0.0485,
+    "US91324PEW86": 0.0505, "US532457CG18": 0.0488, "US91324PES74": 0.0588,
+    "US459200KZ37": 0.0510, "US459200KV23": 0.0490, "US45866FAX24": 0.0495,
+    "US872898AJ06": 0.0450, "US084664DB47": 0.0385, "US92343VGP31": 0.0388,
+    "US828807DJ39": 0.0380, "US191216CQ13": 0.0420, "US254687FM36": 0.0275,
+    "XS1982116136": 0.0438, "US58933YAW57": 0.0400, "US125523AK66": 0.0490,
+}
+
+BOND_PAY_MONTHS = {
+    "US88579YBD22": (9, 3), "US084664CQ25": (8, 2), "XS1807174559": (4, 10),
+    "US023135BJ40": (8, 2), "US375558BK80": (3, 9), "US037833CH12": (2, 8),
+    "US002824BH26": (11, 5), "XS1508675508": (10, 4), "US02209SAV51": (9, 3),
+    "US92343VCK89": (8, 2), "US594918BT09": (8, 2), "US125523CF53": (7, 1),
+    "US20030NBU46": (7, 1), "US375558BD48": (3, 9), "US02079KBN63": (2, 8),
+    "US30303M8X35": (11, 5), "US747525AK99": (5, 11), "US25468PDB94": (6, 12),
+    "US717081DK61": (5, 11), "US449276AF17": (2, 8), "US02209SAR40": (1, 7),
+    "US12572QAF28": (9, 3), "US037833AL42": (5, 11), "US084670BK32": (2, 8),
+    "US594918BZ68": (2, 8), "US717081EC37": (12, 6), "US035242AM81": (2, 8),
+    "US91159HJN17": (6, 12), "US55608KBG94": (11, 5), "US686330AR22": (9, 3),
+    "USG91139AL26": (7, 1), "US92556HAC16": (5, 11), "US31428XCA28": (5, 11),
+    "US09062XAG88": (5, 11), "US37045VAT70": (4, 10), "US854502AJ02": (11, 5),
+    "US00206RCU41": (2, 8), "US94974BGU89": (12, 6), "US172967KR13": (5, 11),
+    "US00206RCQ39": (5, 11), "US58013MFA71": (12, 6), "US42824CAY57": (10, 4),
+    "US09062XAD57": (9, 3), "US37045VAJ98": (4, 10), "US61747YDY86": (1, 7),
+    "US94974BGE48": (11, 5), "US172967HS33": (5, 11), "XS1049699926": (3, 9),
+    "US404280AQ21": (3, 9), "US37045VAF76": (10, 4), "US92553PAP71": (3, 9),
+    "US00206RBH49": (12, 6), "US71568QAB32": (10, 4), "US854502AA92": (9, 3),
+    "US50076QAN60": (2, 8), "XS2885079702": (9, 3), "US46625HHF01": (5, 11),
+    "US37045VAP58": (4, 10), "US126650CY46": (3, 9), "US38141GFD16": (10, 4),
+    "US00206RDR03": (3, 9), "US404280AG49": (5, 11), "US38143YAC75": (5, 11),
+    "US925524AX89": (4, 10), "US37045VAK61": (4, 10), "XS3151416727": (12, 6),
+    "US06051GLU12": (9, 3), "XS2852920342": (7, 1), "US458140CA64": (8, 2),
+    "US02079KBP12": (1, 7), "US30303MAE21": (11, 5), "US64110LBA35": (9, 3),
+    "US03769MAC01": (8, 2), "US191216DS69": (10, 4), "US92343VGW81": (3, 9),
+    "XS2747599509": (9, 3), "US29736RAU41": (9, 3), "US037833EW60": (2, 8),
+    "US91324PEW86": (10, 4), "US532457CG18": (2, 8), "US91324PES74": (10, 4),
+    "US459200KZ37": (2, 8), "US459200KV23": (9, 3), "US45866FAX24": (3, 9),
+    "US872898AJ06": (4, 10), "US084664DB47": (3, 9), "US92343VGP31": (8, 2),
+    "US828807DJ39": (7, 1), "US191216CQ13": (10, 4), "US254687FM36": (9, 3),
+    "XS1982116136": (3, 9), "US58933YAW57": (9, 3), "US125523AK66": (3, 9),
+}
+
 FUND_DB = {
     "F00001DRQQ_FO": "PIMCO收益增長",
     "F0GBR04SG1_FO": "AV04駿利亨德森平衡基金",
@@ -896,7 +986,168 @@ if st.session_state.result_ready:
             )
         st.markdown("---")
 
-        if st.button("🖨️ 生成 PDF 報告（密碼保護）", type="primary"):
+        # ==========================================
+        # 現金流試算區塊
+        # ==========================================
+        st.markdown("---")
+        st.subheader("💰 配息現金流試算")
+        st.caption("根據最適配置比例自動帶入，債券使用當前殖利率，基金配息率可手動調整。")
+
+        principal_cf = st.number_input("投資本金（美元）", min_value=10000, max_value=10000000, value=1000000, step=10000, format="%d")
+
+        # 基金配息率調整
+        fund_labels_in = [lbl for lbl, w in zip(labels, weights) if w > 0.001 and lbl in [FUND_DB.get(k, "") for k in FUND_DB]]
+        fund_ticker_map = {v: k for k, v in FUND_DB.items()}
+
+        adjusted_yields = {}
+        bond_labels_in = []
+        fund_labels_cf = []
+
+        for lbl, w in zip(labels, weights):
+            if w <= 0.001:
+                continue
+            ticker = fund_ticker_map.get(lbl)
+            if ticker and ticker in FUND_YIELD_DB:
+                fund_labels_cf.append((lbl, ticker, w))
+            else:
+                # 找 ISIN
+                isin = next((k for k, v in BOND_DB.items() if v["issuer"] == lbl), None)
+                if isin:
+                    bond_labels_in.append((lbl, isin, w))
+
+        if fund_labels_cf:
+            st.markdown("**📊 基金配息率調整**")
+            fund_cols = st.columns(min(len(fund_labels_cf), 3))
+            for i, (lbl, ticker, w) in enumerate(fund_labels_cf):
+                default_yield = FUND_YIELD_DB.get(ticker, 0.08)
+                with fund_cols[i % 3]:
+                    adj = st.slider(
+                        f"{lbl[:12]}",
+                        min_value=1.0, max_value=20.0,
+                        value=round(default_yield * 100, 2),
+                        step=0.01, format="%.2f%%"
+                    ) / 100
+                    adjusted_yields[ticker] = adj
+
+        # 計算現金流
+        months_names = ["一月","二月","三月","四月","五月","六月","七月","八月","九月","十月","十一月","十二月"]
+        monthly_total = [0.0] * 12
+        cf_items_auto = []
+        COLORS_CF = ["#1565c0","#c62828","#2e7d32","#6a1b9a","#e65100","#00838f","#ad1457","#00695c","#f57f17","#4527a0"]
+
+        for i, (lbl, ticker, w) in enumerate(fund_labels_cf):
+            amt = principal_cf * w
+            yield_rate = adjusted_yields.get(ticker, FUND_YIELD_DB.get(ticker, 0.08))
+            annual_income = amt * yield_rate
+            monthly_income = annual_income / 12
+            cf_items_auto.append({
+                "label": chr(65+i), "name": lbl, "type": "FUND",
+                "amount": amt, "weight": w, "yield_pct": yield_rate,
+                "annual_income": annual_income, "color": COLORS_CF[i % len(COLORS_CF)]
+            })
+            for m in range(12):
+                monthly_total[m] += monthly_income
+
+        bond_offset = len(fund_labels_cf)
+        for j, (lbl, isin, w) in enumerate(bond_labels_in):
+            amt = principal_cf * w
+            yield_rate = BOND_CURRENT_YIELD.get(isin, BOND_DB.get(isin, {}).get("coupon", 5.0) / 100)
+            annual_income = amt * yield_rate
+            pay_months = BOND_PAY_MONTHS.get(isin, (3, 9))
+            cf_items_auto.append({
+                "label": chr(65 + bond_offset + j), "name": lbl, "type": "BOND",
+                "isin": isin, "amount": amt, "weight": w, "yield_pct": yield_rate,
+                "annual_income": annual_income, "color": COLORS_CF[(bond_offset+j) % len(COLORS_CF)],
+                "pay_months": pay_months
+            })
+            for m in pay_months:
+                monthly_total[m-1] += annual_income / 2
+
+        if cf_items_auto:
+            total_income_cf = sum(x["annual_income"] for x in cf_items_auto)
+            avg_yield_cf = total_income_cf / principal_cf * 100 if principal_cf > 0 else 0
+            max_m_idx = monthly_total.index(max(monthly_total))
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("💰 本金", f"${principal_cf:,.0f}")
+            c2.metric("📈 年化配息率", f"{avg_yield_cf:.2f}%")
+            c3.metric("🎯 年領總息", f"${total_income_cf:,.0f}")
+            c4.metric("📅 月均領息", f"${total_income_cf/12:,.0f}")
+
+            st.markdown("---")
+            # 逐月現金流表格
+            st.markdown("**📅 逐月現金流明細**")
+            cf_html = '<table style="width:100%;border-collapse:collapse;font-size:0.82rem;border-radius:8px;overflow:hidden;">'
+            cf_html += '<thead><tr><th style="background:#1a2744;color:white;padding:8px 12px;text-align:left;">月份</th>'
+            for item in cf_items_auto:
+                cf_html += f'<th style="background:{item["color"]};color:white;padding:8px 12px;text-align:center;">{item["label"]}. {item["name"][:8]}</th>'
+            cf_html += '<th style="background:#c8a84b;color:white;padding:8px 12px;text-align:center;">當月合計</th></tr></thead><tbody>'
+
+            for m_idx, mname in enumerate(months_names):
+                m = m_idx + 1
+                bg = "#f0f4ff" if m_idx % 2 == 0 else "white"
+                cf_html += f'<tr style="background:{bg};"><td style="padding:7px 12px;font-weight:700;color:#1a2744;">{mname}</td>'
+                for item in cf_items_auto:
+                    if item["type"] == "FUND":
+                        val = item["annual_income"] / 12
+                        cf_html += f'<td style="padding:7px 12px;text-align:right;">${val:,.0f}</td>'
+                    else:
+                        if m in item["pay_months"]:
+                            val = item["annual_income"] / 2
+                            cf_html += f'<td style="padding:7px 12px;text-align:right;font-weight:600;color:#1565c0;">${val:,.0f}</td>'
+                        else:
+                            cf_html += '<td style="padding:7px 12px;text-align:center;color:#ccc;">—</td>'
+                cf_html += f'<td style="padding:7px 12px;text-align:right;font-weight:700;color:#c8a84b;">${monthly_total[m_idx]:,.0f}</td></tr>'
+
+            cf_html += '<tr style="background:#1a2744;"><td style="padding:8px 12px;color:#ffd700;font-weight:700;">全年合計</td>'
+            for item in cf_items_auto:
+                cf_html += f'<td style="padding:8px 12px;text-align:right;color:white;font-weight:700;">${item["annual_income"]:,.0f}</td>'
+            cf_html += f'<td style="padding:8px 12px;text-align:right;color:#ffd700;font-weight:700;">${total_income_cf:,.0f}</td></tr>'
+            cf_html += '</tbody></table>'
+            st.markdown(cf_html, unsafe_allow_html=True)
+
+            st.markdown("---")
+            # 月現金流長條圖
+            st.markdown("**📊 月現金流圖表**")
+            fig_cf = go.Figure()
+            fig_cf.add_trace(go.Bar(
+                x=months_names, y=monthly_total,
+                marker_color=["#1565c0" if i == max_m_idx else "#90caf9" for i in range(12)],
+                text=[f"${v:,.0f}" for v in monthly_total],
+                textposition="outside"
+            ))
+            fig_cf.update_layout(
+                yaxis_title="配息金額（美元）", height=350,
+                plot_bgcolor="#f8f9ff", paper_bgcolor="white",
+                showlegend=False, margin=dict(t=20, b=40)
+            )
+            st.plotly_chart(fig_cf, use_container_width=True)
+
+            # 配息率明細
+            st.markdown("**📋 各標的配息明細**")
+            detail_rows = []
+            for item in cf_items_auto:
+                detail_rows.append({
+                    "標的": item["name"],
+                    "類型": item["type"],
+                    "配置比例": f"{item['weight']:.1%}",
+                    "配置金額": f"${item['amount']:,.0f}",
+                    "殖利率/配息率": f"{item['yield_pct']:.2%}",
+                    "年配息": f"${item['annual_income']:,.0f}",
+                    "月均配息": f"${item['annual_income']/12:,.0f}",
+                    "配息頻率": "月配" if item["type"] == "FUND" else f"{item['pay_months'][0]}月/{item['pay_months'][1]}月",
+                })
+            st.dataframe(pd.DataFrame(detail_rows), use_container_width=True, hide_index=True)
+            st.caption("※ 債券使用當前殖利率估算，基金配息率可調整。實際配息以各機構公告為準，僅供參考。")
+
+            # 存入 session_state 供 PDF 使用
+            st.session_state["cf_items_auto"] = cf_items_auto
+            st.session_state["monthly_total"] = monthly_total
+            st.session_state["principal_cf"] = principal_cf
+            st.session_state["total_income_cf"] = total_income_cf
+            st.session_state["avg_yield_cf"] = avg_yield_cf
+
+                if st.button("🖨️ 生成 PDF 報告（密碼保護）", type="primary"):
             with st.spinner("生成中..."):
                 pdf_buf = generate_pdf(weights, labels, ann_ret, ann_vol, sharpe_r, returns_df, port_ret, port_vol, port_sharpe, st.session_state.method_label, st.session_state.period_label)
                 st.download_button("📥 下載 PDF 報告", data=pdf_buf, file_name=f"最適組合_{datetime.today().strftime('%Y%m%d')}.pdf", mime="application/pdf", use_container_width=True)
