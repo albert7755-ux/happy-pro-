@@ -785,13 +785,62 @@ if st.session_state.result_ready:
         cov = returns_df.cov() * 252
         opt_w_sharpe = run_optimization(returns_df, method="max_sharpe")
         opt_w_minvol = run_optimization(returns_df, method="min_vol")
+        # 計算當前投組（使用者選擇的策略）的位置
+        cur_vol = float(np.sqrt(np.dot(weights.T, np.dot(cov, weights))))
+        cur_ret = float(port_ret)
         fig_ef = go.Figure()
         fig_ef.add_trace(go.Scatter(x=vols, y=rets, mode="lines", line=dict(color="#1565c0", width=2.5), name="有效前緣"))
         fig_ef.add_trace(go.Scatter(x=ann_vol.values, y=ann_ret.values, mode="markers+text", text=labels, textposition="top center", marker=dict(size=8, color="#888"), name="各標的"))
         fig_ef.add_trace(go.Scatter(x=[float(np.sqrt(np.dot(opt_w_sharpe.T, np.dot(cov, opt_w_sharpe))))], y=[float(np.dot(opt_w_sharpe, ann_ret))], mode="markers", marker=dict(size=14, color="#c8a84b", symbol="star"), name="最大夏普"))
         fig_ef.add_trace(go.Scatter(x=[float(np.sqrt(np.dot(opt_w_minvol.T, np.dot(cov, opt_w_minvol))))], y=[float(np.dot(opt_w_minvol, ann_ret))], mode="markers", marker=dict(size=12, color="#2e7d32", symbol="diamond"), name="最小風險"))
+        # ★ 加入當前投組位置
+        fig_ef.add_trace(go.Scatter(
+            x=[cur_vol], y=[cur_ret], mode="markers+text",
+            text=[f"▶ 目前投組（{st.session_state.method_label}）"],
+            textposition="top right",
+            marker=dict(size=16, color="#e53935", symbol="circle"),
+            name=f"目前投組（{st.session_state.method_label}）"
+        ))
         fig_ef.update_layout(xaxis_title="年化波動率", yaxis_title="年化報酬率", hovermode="closest", height=420, xaxis=dict(tickformat=".1%"), yaxis=dict(tickformat=".1%"))
         st.plotly_chart(fig_ef, use_container_width=True)
+        st.markdown("---")
+
+        st.markdown("**持有期間愈長，正報酬機率**")
+        port_daily_ret_prob = returns_df.dot(weights)
+        holding_periods = {
+            "1個月": 21, "3個月": 63, "6個月": 126,
+            "1年": 252, "2年": 504, "3年": 756
+        }
+        prob_rows = []
+        for label_p, days in holding_periods.items():
+            rolling_ret = (1 + port_daily_ret_prob).rolling(days).apply(np.prod, raw=True) - 1
+            rolling_ret = rolling_ret.dropna()
+            if len(rolling_ret) > 0:
+                win_rate = (rolling_ret > 0).mean()
+                avg_gain = rolling_ret[rolling_ret > 0].mean() if (rolling_ret > 0).any() else 0
+                avg_loss = rolling_ret[rolling_ret <= 0].mean() if (rolling_ret <= 0).any() else 0
+                prob_rows.append({
+                    "持有期間": label_p,
+                    "正報酬機率": f"{win_rate:.1%}",
+                    "獲利時平均報酬": f"{avg_gain:.2%}",
+                    "虧損時平均報酬": f"{avg_loss:.2%}",
+                    "樣本數": len(rolling_ret),
+                })
+        if prob_rows:
+            prob_df = pd.DataFrame(prob_rows)
+            # 用顏色標示正報酬機率高低
+            def color_winrate(val):
+                try:
+                    v = float(val.replace("%","")) / 100
+                    if v >= 0.8: return "background-color: #c8e6c9; color: #1b5e20"
+                    elif v >= 0.6: return "background-color: #fff9c4; color: #f57f17"
+                    else: return "background-color: #ffcdd2; color: #b71c1c"
+                except: return ""
+            st.dataframe(
+                prob_df.style.applymap(color_winrate, subset=["正報酬機率"]),
+                use_container_width=True, hide_index=True
+            )
+            st.caption("※ 基於歷史滾動報酬計算，樣本期間越短樣本數越多，結果僅供參考。")
         st.markdown("---")
 
         st.markdown("**相關係數矩陣**")
@@ -821,11 +870,19 @@ if st.session_state.result_ready:
                     meta_rows.append({"標的": lbl, "類型": "股票/ETF", "ISIN": "-", "到期年": "-", "票息": "-", "不足時補齊用": "-", "資料起始": data_start, "資料結束": data_end, "有效交易日": n_days})
             st.dataframe(pd.DataFrame(meta_rows), use_container_width=True, hide_index=True)
             st.markdown("---")
-            st.markdown("**原始日報酬率**")
-            display_df = returns_df.copy()
-            display_df.index = display_df.index.strftime("%Y-%m-%d")
-            display_df = display_df.sort_index(ascending=False)
-            st.dataframe(display_df.style.format("{:.4%}").background_gradient(cmap="RdYlGn", vmin=-0.03, vmax=0.03), use_container_width=True, height=400)
+            st.markdown("**月報酬率（各標的 + 投資組合）**")
+            # 各標的月報酬
+            monthly_df = (1 + returns_df).resample("ME").prod() - 1
+            # 加入投組月報酬
+            port_daily_ret_disp = returns_df.dot(weights)
+            port_monthly_ret = (1 + port_daily_ret_disp).resample("ME").prod() - 1
+            monthly_df.insert(0, "📐 投資組合", port_monthly_ret)
+            monthly_df.index = monthly_df.index.strftime("%Y-%m")
+            monthly_df = monthly_df.sort_index(ascending=False)
+            st.dataframe(
+                monthly_df.style.format("{:.2%}").background_gradient(cmap="RdYlGn", vmin=-0.08, vmax=0.08),
+                use_container_width=True, height=400
+            )
         st.markdown("---")
 
         if st.button("🖨️ 生成 PDF 報告（密碼保護）", type="primary"):
