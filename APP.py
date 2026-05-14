@@ -596,9 +596,179 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
     story.append(corr_tbl)
     story.append(Spacer(1, 0.3*cm))
     story.append(Paragraph("※ 紅底=高相關(>0.7)，綠底=低相關(<0.3)。低相關標的有助分散風險。", small_s))
+
+    # ── 四、月報酬率 ──
+    story.append(PageBreak())
+    story.append(Paragraph("四、月報酬率", h2_s))
+    story.append(HRFlowable(width="100%", thickness=2, color=GOLD, spaceAfter=8))
+    monthly_df = (1 + returns_df).resample("ME").prod() - 1
+    port_monthly = (1 + returns_df.dot(weights)).resample("ME").prod() - 1
+    monthly_df.insert(0, "投資組合", port_monthly)
+    monthly_df = monthly_df.sort_index(ascending=False).head(36)  # 最近3年
+    col_names = ["月份"] + [lbl[:8] for lbl in monthly_df.columns.tolist()]
+    m_rows = [col_names]
+    for idx, row in monthly_df.iterrows():
+        r = [idx.strftime("%Y-%m")]
+        for v in row.values:
+            r.append(f"{v:.1%}")
+        m_rows.append(r)
+    n_mcols = len(col_names)
+    m_tbl = Table(m_rows, colWidths=[17*cm/n_mcols]*n_mcols)
+    m_style = [
+        ("BACKGROUND",(0,0),(-1,0),NAVY),("TEXTCOLOR",(0,0),(-1,0),WHITE),
+        ("FONTNAME",(0,0),(-1,-1),font),("FONTSIZE",(0,0),(-1,-1),7),
+        ("ALIGN",(0,0),(-1,-1),"CENTER"),("GRID",(0,0),(-1,-1),0.3,colors.HexColor("#dddddd")),
+        ("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[BG,WHITE]),
+    ]
+    import numpy as _np
+    for ri in range(1, len(m_rows)):
+        for ci in range(1, n_mcols):
+            try:
+                v = float(m_rows[ri][ci].replace("%","")) / 100
+                if v > 0:
+                    m_style.append(("TEXTCOLOR",(ci,ri),(ci,ri),colors.HexColor("#1b5e20")))
+                elif v < 0:
+                    m_style.append(("TEXTCOLOR",(ci,ri),(ci,ri),colors.HexColor("#b71c1c")))
+            except: pass
+    m_tbl.setStyle(TableStyle(m_style))
+    story.append(m_tbl)
+    story.append(Spacer(1, 0.3*cm))
+    story.append(Paragraph("※ 顯示最近 36 個月，綠色=正報酬，紅色=負報酬。", small_s))
+
+    # ── 五、持有期間正報酬機率 ──
+    story.append(Spacer(1, 0.4*cm))
+    story.append(Paragraph("五、持有期間正報酬機率", h2_s))
+    story.append(HRFlowable(width="100%", thickness=2, color=GOLD, spaceAfter=8))
+    holding_periods_pdf = {"1個月":21,"3個月":63,"6個月":126,"1年":252,"2年":504,"3年":756}
+    port_daily_pdf = returns_df.dot(weights)
+    all_series_pdf = {"投資組合": port_daily_pdf}
+    for lbl in returns_df.columns:
+        all_series_pdf[lbl[:8]] = returns_df[lbl]
+    win_headers = ["持有期間"] + list(all_series_pdf.keys())
+    win_rows = [win_headers]
+    for pname, days in holding_periods_pdf.items():
+        row = [pname]
+        for sname, series in all_series_pdf.items():
+            rolling = (1 + series).rolling(days).apply(_np.prod, raw=True) - 1
+            rolling = rolling.dropna()
+            if len(rolling) > 0:
+                row.append(f"{(rolling > 0).mean():.1%}")
+            else:
+                row.append("-")
+        win_rows.append(row)
+    n_wcols = len(win_headers)
+    win_tbl = Table(win_rows, colWidths=[17*cm/n_wcols]*n_wcols)
+    win_style = [
+        ("BACKGROUND",(0,0),(-1,0),NAVY),("TEXTCOLOR",(0,0),(-1,0),WHITE),
+        ("BACKGROUND",(0,0),(0,-1),NAVY),("TEXTCOLOR",(0,0),(0,-1),WHITE),
+        ("FONTNAME",(0,0),(-1,-1),font),("FONTSIZE",(0,0),(-1,-1),7.5),
+        ("ALIGN",(0,0),(-1,-1),"CENTER"),("GRID",(0,0),(-1,-1),0.3,colors.HexColor("#dddddd")),
+        ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[BG,WHITE]),
+    ]
+    for ri in range(1, len(win_rows)):
+        for ci in range(1, n_wcols):
+            try:
+                v = float(win_rows[ri][ci].replace("%","")) / 100
+                if v >= 0.8:
+                    win_style.append(("BACKGROUND",(ci,ri),(ci,ri),colors.HexColor("#c8e6c9")))
+                elif v < 0.6:
+                    win_style.append(("BACKGROUND",(ci,ri),(ci,ri),colors.HexColor("#ffcdd2")))
+            except: pass
+    win_tbl.setStyle(TableStyle(win_style))
+    story.append(win_tbl)
+
+    # ── 六、現金流試算 ──
+    cf_items_pdf = st.session_state.get("cf_items_auto", [])
+    monthly_total_pdf = st.session_state.get("monthly_total", [])
+    principal_cf_pdf = st.session_state.get("principal_cf", 0)
+    total_income_pdf = st.session_state.get("total_income_cf", 0)
+    avg_yield_pdf = st.session_state.get("avg_yield_cf", 0)
+
+    if cf_items_pdf and monthly_total_pdf:
+        story.append(PageBreak())
+        story.append(Paragraph("六、配息現金流試算", h2_s))
+        story.append(HRFlowable(width="100%", thickness=2, color=GOLD, spaceAfter=8))
+
+        # KPI 摘要
+        kpi_cf = [
+            ["投資本金", "年化配息率", "年領總息", "月均領息"],
+            [f"${principal_cf_pdf:,.0f}", f"{avg_yield_pdf:.2f}%", f"${total_income_pdf:,.0f}", f"${total_income_pdf/12:,.0f}"],
+        ]
+        kpi_cf_tbl = Table(kpi_cf, colWidths=[4.25*cm]*4)
+        kpi_cf_tbl.setStyle(TableStyle([
+            ("BACKGROUND",(0,0),(-1,0),NAVY),("TEXTCOLOR",(0,0),(-1,0),WHITE),
+            ("BACKGROUND",(0,1),(-1,1),BG),
+            ("FONTNAME",(0,0),(-1,-1),font),("FONTSIZE",(0,0),(-1,-1),9),
+            ("ALIGN",(0,0),(-1,-1),"CENTER"),("GRID",(0,0),(-1,-1),0.3,colors.HexColor("#dddddd")),
+            ("TOPPADDING",(0,0),(-1,-1),6),("BOTTOMPADDING",(0,0),(-1,-1),6),
+        ]))
+        story.append(kpi_cf_tbl)
+        story.append(Spacer(1, 0.4*cm))
+
+        # 各標的配息明細
+        story.append(Paragraph("各標的配息明細", h2_s))
+        detail_hdr = ["標的","類型","配置比例","配置金額","殖利率/配息率","年配息","配息頻率"]
+        detail_rows_pdf = [detail_hdr]
+        for item in cf_items_pdf:
+            freq = "月配" if item["type"] == "FUND" else f"{item['pay_months'][0]}月/{item['pay_months'][1]}月"
+            detail_rows_pdf.append([
+                item["name"][:12], item["type"],
+                f"{item['weight']:.1%}", f"${item['amount']:,.0f}",
+                f"{item['yield_pct']:.2%}", f"${item['annual_income']:,.0f}", freq
+            ])
+        detail_tbl = Table(detail_rows_pdf, colWidths=[4*cm,1.5*cm,2*cm,2.5*cm,2.5*cm,2.5*cm,2*cm])
+        detail_tbl.setStyle(TableStyle([
+            ("BACKGROUND",(0,0),(-1,0),NAVY),("TEXTCOLOR",(0,0),(-1,0),WHITE),
+            ("FONTNAME",(0,0),(-1,-1),font),("FONTSIZE",(0,0),(-1,-1),7.5),
+            ("ALIGN",(0,0),(-1,-1),"CENTER"),("ROWBACKGROUNDS",(0,1),(-1,-1),[BG,WHITE]),
+            ("GRID",(0,0),(-1,-1),0.3,colors.HexColor("#dddddd")),
+            ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
+        ]))
+        story.append(detail_tbl)
+        story.append(Spacer(1, 0.4*cm))
+
+        # 逐月現金流表
+        story.append(Paragraph("逐月現金流明細", h2_s))
+        months_pdf = ["一月","二月","三月","四月","五月","六月","七月","八月","九月","十月","十一月","十二月"]
+        cf_hdr = ["月份"] + [f"{x['label']}.{x['name'][:6]}" for x in cf_items_pdf] + ["當月合計"]
+        cf_tbl_rows = [cf_hdr]
+        for m_idx, mname in enumerate(months_pdf):
+            m = m_idx + 1
+            row = [mname]
+            for item in cf_items_pdf:
+                if item["type"] == "FUND":
+                    row.append(f"${item['annual_income']/12:,.0f}")
+                else:
+                    if m in item["pay_months"]:
+                        row.append(f"${item['annual_income']/2:,.0f}")
+                    else:
+                        row.append("—")
+            row.append(f"${monthly_total_pdf[m_idx]:,.0f}")
+            cf_tbl_rows.append(row)
+        # 全年合計行
+        total_row = ["全年合計"] + [f"${x['annual_income']:,.0f}" for x in cf_items_pdf] + [f"${total_income_pdf:,.0f}"]
+        cf_tbl_rows.append(total_row)
+
+        n_cf_cols = len(cf_hdr)
+        cf_pdf_tbl = Table(cf_tbl_rows, colWidths=[17*cm/n_cf_cols]*n_cf_cols)
+        cf_pdf_style = [
+            ("BACKGROUND",(0,0),(-1,0),NAVY),("TEXTCOLOR",(0,0),(-1,0),WHITE),
+            ("BACKGROUND",(0,-1),(-1,-1),NAVY),("TEXTCOLOR",(0,-1),(-1,-1),colors.HexColor("#ffd700")),
+            ("BACKGROUND",(-1,1),(-1,-2),colors.HexColor("#fff9e6")),
+            ("TEXTCOLOR",(-1,1),(-1,-2),colors.HexColor("#b8860b")),
+            ("FONTNAME",(0,0),(-1,-1),font),("FONTSIZE",(0,0),(-1,-1),7),
+            ("ALIGN",(0,0),(-1,-1),"CENTER"),("ROWBACKGROUNDS",(0,1),(-1,-2),[BG,WHITE]),
+            ("GRID",(0,0),(-1,-1),0.3,colors.HexColor("#dddddd")),
+            ("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3),
+        ]
+        cf_pdf_tbl.setStyle(TableStyle(cf_pdf_style))
+        story.append(cf_pdf_tbl)
+
     story.append(Spacer(1, 0.5*cm))
     story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#888"), spaceAfter=6))
-    story.append(Paragraph("⚠️ 免責聲明：本報告所有數據均基於歷史資料計算，不代表未來績效。僅供內部教育訓練使用，請勿外流。", warn_s))
+    story.append(Paragraph("⚠️ 免責聲明：本報告所有數據均基於歷史資料計算，不代表未來績效。配息金額以各機構實際公告為準。僅供內部教育訓練使用，請勿外流。", warn_s))
     doc.build(story)
     buf.seek(0)
     try:
@@ -646,7 +816,7 @@ mdd_limit_pct = st.sidebar.slider(
 )
 mdd_limit = mdd_limit_pct / 100
 
-tab_select, tab_result = st.tabs(["📋 標的選擇", "📊 分析結果"])
+tab_select, tab_result, tab_manual = st.tabs(["📋 標的選擇", "📊 分析結果", "✏️ 手動配置試算"])
 
 with tab_select:
     st.subheader("選擇要納入的標的")
@@ -865,7 +1035,10 @@ if st.session_state.result_ready:
             if sig_weights:
                 pie_labels, pie_values = zip(*sig_weights)
                 fig_pie = go.Figure(go.Pie(labels=pie_labels, values=pie_values, hole=0.4, textinfo="none", showlegend=True))
-                fig_pie.update_layout(height=320, margin=dict(t=10, b=0))
+                fig_pie.update_layout(
+                    height=320, margin=dict(t=10, b=0),
+                    legend=dict(font=dict(size=13), itemsizing="constant")
+                )
                 st.plotly_chart(fig_pie, use_container_width=True)
         st.markdown("---")
 
@@ -1153,6 +1326,178 @@ if st.session_state.result_ready:
                 pdf_buf = generate_pdf(weights, labels, ann_ret, ann_vol, sharpe_r, returns_df, port_ret, port_vol, port_sharpe, st.session_state.method_label, st.session_state.period_label)
                 st.download_button("📥 下載 PDF 報告", data=pdf_buf, file_name=f"最適組合_{datetime.today().strftime('%Y%m%d')}.pdf", mime="application/pdf", use_container_width=True)
                 st.info("PDF 開啟密碼：**5428**")
+
+# ==========================================
+# 手動配置試算分頁
+# ==========================================
+with tab_manual:
+    st.subheader("✏️ 手動配置現金流試算")
+    st.caption("不依賴優化器，自行輸入各標的配置金額或比例，直接看配息現金流。")
+
+    manual_principal = st.number_input("投資本金（美元）", min_value=10000, max_value=10000000,
+                                        value=1000000, step=10000, format="%d", key="manual_principal")
+
+    st.markdown("---")
+    st.markdown("**選擇標的與配置**")
+
+    manual_col1, manual_col2, manual_col3 = st.columns(3)
+    with manual_col1:
+        manual_bonds = st.multiselect("選擇債券", options=sorted(bond_names.keys()), key="manual_bonds")
+    with manual_col2:
+        manual_funds = st.multiselect("選擇基金", options=list(FUND_DB.keys()),
+                                       format_func=lambda x: FUND_DB[x], key="manual_funds")
+    with manual_col3:
+        manual_extra = st.text_area("自選股票/ETF（每行一個）", height=100, key="manual_extra")
+        manual_extra_tickers = [t.strip().upper() for t in manual_extra.replace(",", " ").split() if t.strip()]
+
+    all_manual_items = (
+        [("BOND", bond_names[n], n) for n in manual_bonds] +
+        [("FUND", FUND_DB[t], t) for t in manual_funds] +
+        [("ETF", t, t) for t in manual_extra_tickers]
+    )
+
+    if all_manual_items:
+        st.markdown("---")
+        st.markdown("**設定各標的配置比例與配息率**")
+        manual_rows = []
+        total_manual_pct = 0
+        fund_ticker_map_m = {v: k for k, v in FUND_DB.items()}
+
+        for idx, (itype, name, key) in enumerate(all_manual_items):
+            c1, c2, c3 = st.columns([3, 2, 2])
+            with c1:
+                st.markdown(f"**{chr(65+idx)}. {name[:20]}**")
+            with c2:
+                pct = st.slider(f"配置比例 %", 0, 100, 20, 1,
+                                key=f"manual_pct_{idx}", label_visibility="collapsed")
+            with c3:
+                if itype == "FUND":
+                    ticker = fund_ticker_map_m.get(name, "")
+                    default_y = FUND_YIELD_DB.get(ticker, 0.08) * 100
+                    yield_r = st.slider(f"配息率 %", 1.0, 20.0, float(round(default_y, 2)), 0.01,
+                                        key=f"manual_yield_{idx}", format="%.2f%%",
+                                        label_visibility="collapsed") / 100
+                elif itype == "BOND":
+                    isin = key if key in BOND_CURRENT_YIELD else None
+                    if isin:
+                        default_y = BOND_CURRENT_YIELD.get(isin, 0.05) * 100
+                    else:
+                        isin2 = next((k for k, v in BOND_DB.items() if v["issuer"] == name), None)
+                        default_y = BOND_CURRENT_YIELD.get(isin2, 0.05) * 100 if isin2 else 5.0
+                    yield_r = st.slider(f"殖利率 %", 1.0, 15.0, float(round(default_y, 2)), 0.01,
+                                        key=f"manual_yield_{idx}", format="%.2f%%",
+                                        label_visibility="collapsed") / 100
+                else:
+                    yield_r = st.slider(f"股息率 %", 0.0, 10.0, 2.0, 0.1,
+                                        key=f"manual_yield_{idx}", format="%.2f%%",
+                                        label_visibility="collapsed") / 100
+            total_manual_pct += pct
+            manual_rows.append({"type": itype, "name": name, "key": key,
+                                  "pct": pct, "yield_r": yield_r})
+
+        # 顯示配置總計
+        color_pct = "#2e7d32" if abs(total_manual_pct - 100) < 1 else "#c62828"
+        st.markdown(f"**資金配置：<span style='color:{color_pct}'>{total_manual_pct}%</span>**"
+                    + ("　✅ 已滿" if abs(total_manual_pct - 100) < 1 else f"　⚠️ 還差 {100 - total_manual_pct}%"),
+                    unsafe_allow_html=True)
+
+        if st.button("💰 計算現金流", type="primary", key="manual_calc"):
+            months_names_m = ["一月","二月","三月","四月","五月","六月",
+                               "七月","八月","九月","十月","十一月","十二月"]
+            monthly_total_m = [0.0] * 12
+            cf_manual_items = []
+            COLORS_M = ["#1565c0","#c62828","#2e7d32","#6a1b9a","#e65100",
+                         "#00838f","#ad1457","#00695c","#f57f17","#4527a0"]
+
+            for idx, row in enumerate(manual_rows):
+                if row["pct"] <= 0:
+                    continue
+                amt = manual_principal * row["pct"] / 100
+                annual_income = amt * row["yield_r"]
+                itype = row["type"]
+                name = row["name"]
+                key = row["key"]
+
+                if itype == "BOND":
+                    isin = key if key in BOND_PAY_MONTHS else next(
+                        (k for k, v in BOND_DB.items() if v["issuer"] == name), None)
+                    pay_months = BOND_PAY_MONTHS.get(isin, (3, 9)) if isin else (3, 9)
+                    for m in pay_months:
+                        monthly_total_m[m-1] += annual_income / 2
+                    cf_manual_items.append({
+                        "label": chr(65+idx), "name": name, "type": "BOND",
+                        "amount": amt, "weight": row["pct"]/100, "yield_pct": row["yield_r"],
+                        "annual_income": annual_income, "color": COLORS_M[idx % len(COLORS_M)],
+                        "pay_months": pay_months
+                    })
+                else:
+                    # FUND 或 ETF 月配
+                    for m in range(12):
+                        monthly_total_m[m] += annual_income / 12
+                    cf_manual_items.append({
+                        "label": chr(65+idx), "name": name, "type": "FUND",
+                        "amount": amt, "weight": row["pct"]/100, "yield_pct": row["yield_r"],
+                        "annual_income": annual_income, "color": COLORS_M[idx % len(COLORS_M)],
+                    })
+
+            total_income_m = sum(x["annual_income"] for x in cf_manual_items)
+            avg_yield_m = total_income_m / manual_principal * 100 if manual_principal > 0 else 0
+            max_m_idx_m = monthly_total_m.index(max(monthly_total_m))
+
+            # KPI
+            k1, k2, k3, k4 = st.columns(4)
+            k1.metric("💰 本金", f"${manual_principal:,.0f}")
+            k2.metric("📈 年化配息率", f"{avg_yield_m:.2f}%")
+            k3.metric("🎯 年領總息", f"${total_income_m:,.0f}")
+            k4.metric("📅 月均領息", f"${total_income_m/12:,.0f}")
+
+            # 逐月現金流表
+            st.markdown("---")
+            st.markdown("**📅 逐月現金流明細**")
+            cf_html_m = '<table style="width:100%;border-collapse:collapse;font-size:0.82rem;border-radius:8px;overflow:hidden;">'
+            cf_html_m += '<thead><tr><th style="background:#1a2744;color:white;padding:8px 12px;text-align:left;">月份</th>'
+            for item in cf_manual_items:
+                cf_html_m += f'<th style="background:{item["color"]};color:white;padding:8px 12px;text-align:center;">{item["label"]}. {item["name"][:8]}</th>'
+            cf_html_m += '<th style="background:#c8a84b;color:white;padding:8px 12px;text-align:center;">當月合計</th></tr></thead><tbody>'
+
+            for m_idx, mname in enumerate(months_names_m):
+                m = m_idx + 1
+                bg = "#f0f4ff" if m_idx % 2 == 0 else "white"
+                cf_html_m += f'<tr style="background:{bg};"><td style="padding:7px 12px;font-weight:700;color:#1a2744;">{mname}</td>'
+                for item in cf_manual_items:
+                    if item["type"] == "FUND":
+                        val = item["annual_income"] / 12
+                        cf_html_m += f'<td style="padding:7px 12px;text-align:right;">${val:,.0f}</td>'
+                    else:
+                        if m in item["pay_months"]:
+                            val = item["annual_income"] / 2
+                            cf_html_m += f'<td style="padding:7px 12px;text-align:right;font-weight:600;color:#1565c0;">${val:,.0f}</td>'
+                        else:
+                            cf_html_m += '<td style="padding:7px 12px;text-align:center;color:#ccc;">—</td>'
+                cf_html_m += f'<td style="padding:7px 12px;text-align:right;font-weight:700;color:#c8a84b;">${monthly_total_m[m_idx]:,.0f}</td></tr>'
+            cf_html_m += '<tr style="background:#1a2744;"><td style="padding:8px 12px;color:#ffd700;font-weight:700;">全年合計</td>'
+            for item in cf_manual_items:
+                cf_html_m += f'<td style="padding:8px 12px;text-align:right;color:white;font-weight:700;">${item["annual_income"]:,.0f}</td>'
+            cf_html_m += f'<td style="padding:8px 12px;text-align:right;color:#ffd700;font-weight:700;">${total_income_m:,.0f}</td></tr></tbody></table>'
+            st.markdown(cf_html_m, unsafe_allow_html=True)
+
+            # 長條圖
+            st.markdown("---")
+            st.markdown("**📊 月現金流圖表**")
+            fig_cf_m = go.Figure()
+            fig_cf_m.add_trace(go.Bar(
+                x=months_names_m, y=monthly_total_m,
+                marker_color=["#1565c0" if i == max_m_idx_m else "#90caf9" for i in range(12)],
+                text=[f"${v:,.0f}" for v in monthly_total_m],
+                textposition="outside"
+            ))
+            fig_cf_m.update_layout(
+                yaxis_title="配息金額（美元）", height=350,
+                plot_bgcolor="#f8f9ff", paper_bgcolor="white",
+                showlegend=False, margin=dict(t=20, b=40)
+            )
+            st.plotly_chart(fig_cf_m, use_container_width=True)
+            st.caption("※ 配息金額為估算值，實際以各機構公告為準。僅供內部教育訓練使用，請勿外流。")
 
 st.markdown("---")
 st.warning("⚠️ 本工具所有計算均基於歷史資料，不代表未來績效。僅供內部教育訓練使用，請勿外流。")
