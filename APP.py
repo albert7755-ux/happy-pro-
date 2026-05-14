@@ -546,7 +546,7 @@ method_label = st.sidebar.radio("選擇策略", list(method_map.keys()))
 method = method_map[method_label]
 target_return = 0.08
 if method == "target_return":
-    target_return = st.sidebar.slider("目標年化報酬率 %", 1.0, 20.0, 8.0, 0.5) / 100
+    target_return = st.sidebar.slider("目標年化報酬率 %", 1.0, 30.0, 8.0, 0.5) / 100
 
 st.sidebar.header("3. 最大回撤限制")
 mdd_limit_pct = st.sidebar.slider(
