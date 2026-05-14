@@ -278,9 +278,10 @@ def read_sheet_as_series(sheet_id, label):
     date_col = df.columns[0]
     val_col = df.columns[1]
     try:
-        df["date"] = pd.to_datetime(df[date_col], unit="s", errors="coerce")
+        # 先嘗試字串日期（YYYY-MM-DD），再試 Unix timestamp
+        df["date"] = pd.to_datetime(df[date_col], errors="coerce")
         if df["date"].isna().mean() > 0.5:
-            df["date"] = pd.to_datetime(df[date_col], errors="coerce")
+            df["date"] = pd.to_datetime(df[date_col], unit="s", errors="coerce")
     except:
         df["date"] = pd.to_datetime(df[date_col], errors="coerce")
     df = df.dropna(subset=["date"])
