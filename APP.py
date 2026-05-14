@@ -1147,7 +1147,8 @@ if st.session_state.result_ready:
             st.session_state["total_income_cf"] = total_income_cf
             st.session_state["avg_yield_cf"] = avg_yield_cf
 
-                if st.button("🖨️ 生成 PDF 報告（密碼保護）", type="primary"):
+        st.markdown("---")
+        if st.button("🖨️ 生成 PDF 報告（密碼保護）", type="primary"):
             with st.spinner("生成中..."):
                 pdf_buf = generate_pdf(weights, labels, ann_ret, ann_vol, sharpe_r, returns_df, port_ret, port_vol, port_sharpe, st.session_state.method_label, st.session_state.period_label)
                 st.download_button("📥 下載 PDF 報告", data=pdf_buf, file_name=f"最適組合_{datetime.today().strftime('%Y%m%d')}.pdf", mime="application/pdf", use_container_width=True)
