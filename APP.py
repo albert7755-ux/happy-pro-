@@ -1461,5 +1461,151 @@ with tab_manual:
             st.plotly_chart(fig_cf_m, use_container_width=True)
             st.caption("※ 配息金額為估算值，實際以各機構公告為準。僅供內部教育訓練使用，請勿外流。")
 
+            st.markdown("---")
+            if st.button("🖨️ 生成手動配置 PDF", type="primary", key="manual_pdf"):
+                with st.spinner("生成中..."):
+                    try:
+                        buf_m = io.BytesIO()
+                        font_m = get_chinese_font()
+                        NAVY_M = colors.HexColor("#1a2744")
+                        GOLD_M = colors.HexColor("#c8a84b")
+                        WHITE_M = colors.white
+                        BG_M = colors.HexColor("#f0f4ff")
+                        RED_M = colors.HexColor("#c62828")
+                        doc_m = SimpleDocTemplate(buf_m, pagesize=A4,
+                            leftMargin=1.8*cm, rightMargin=1.8*cm,
+                            topMargin=2*cm, bottomMargin=2*cm)
+                        title_s_m = ParagraphStyle("tm", fontName=font_m, fontSize=20, textColor=WHITE_M, alignment=TA_CENTER)
+                        sub_s_m   = ParagraphStyle("sm2", fontName=font_m, fontSize=10, textColor=colors.HexColor("#cce0ff"), alignment=TA_CENTER)
+                        h2_s_m    = ParagraphStyle("h2m", fontName=font_m, fontSize=12, textColor=NAVY_M, spaceBefore=12, spaceAfter=6)
+                        small_s_m = ParagraphStyle("smm", fontName=font_m, fontSize=8, textColor=colors.HexColor("#555"))
+                        warn_s_m  = ParagraphStyle("wm", fontName=font_m, fontSize=7.5, textColor=RED_M, backColor=colors.HexColor("#fff3cd"), borderPadding=6, spaceBefore=8)
+                        story_m = []
+
+                        # 封面
+                        title_tbl_m = Table(
+                            [[Paragraph("手動配置現金流分析報告", title_s_m)],
+                             [Paragraph(f"製作日期：{datetime.today().strftime('%Y-%m-%d')}　｜　投資本金：${manual_principal:,.0f}", sub_s_m)]],
+                            colWidths=[17*cm]
+                        )
+                        title_tbl_m.setStyle(TableStyle([
+                            ("BACKGROUND",(0,0),(-1,-1),NAVY_M),
+                            ("TOPPADDING",(0,0),(-1,-1),16),
+                            ("BOTTOMPADDING",(0,0),(-1,-1),16)
+                        ]))
+                        story_m.append(title_tbl_m)
+                        story_m.append(Spacer(1, 0.5*cm))
+
+                        # KPI
+                        story_m.append(Paragraph("一、配息總覽", h2_s_m))
+                        story_m.append(HRFlowable(width="100%", thickness=2, color=GOLD_M, spaceAfter=8))
+                        kpi_m = [
+                            ["投資本金", "年化配息率", "年領總息", "月均領息"],
+                            [f"${manual_principal:,.0f}", f"{avg_yield_m:.2f}%",
+                             f"${total_income_m:,.0f}", f"${total_income_m/12:,.0f}"],
+                        ]
+                        kpi_m_tbl = Table(kpi_m, colWidths=[4.25*cm]*4)
+                        kpi_m_tbl.setStyle(TableStyle([
+                            ("BACKGROUND",(0,0),(-1,0),NAVY_M),("TEXTCOLOR",(0,0),(-1,0),WHITE_M),
+                            ("BACKGROUND",(0,1),(-1,1),BG_M),
+                            ("FONTNAME",(0,0),(-1,-1),font_m),("FONTSIZE",(0,0),(-1,-1),9),
+                            ("ALIGN",(0,0),(-1,-1),"CENTER"),
+                            ("GRID",(0,0),(-1,-1),0.3,colors.HexColor("#dddddd")),
+                            ("TOPPADDING",(0,0),(-1,-1),6),("BOTTOMPADDING",(0,0),(-1,-1),6),
+                        ]))
+                        story_m.append(kpi_m_tbl)
+                        story_m.append(Spacer(1, 0.4*cm))
+
+                        # 各標的明細
+                        story_m.append(Paragraph("二、各標的配息明細", h2_s_m))
+                        story_m.append(HRFlowable(width="100%", thickness=2, color=GOLD_M, spaceAfter=8))
+                        det_hdr = ["標的","類型","配置比例","配置金額","殖利率/配息率","年配息","配息頻率"]
+                        det_rows = [det_hdr]
+                        for item in cf_manual_items:
+                            freq = "月配" if item["type"] == "FUND" else f"{item['pay_months'][0]}月/{item['pay_months'][1]}月"
+                            det_rows.append([
+                                item["name"][:12], item["type"],
+                                f"{item['weight']:.1%}", f"${item['amount']:,.0f}",
+                                f"{item['yield_pct']:.2%}", f"${item['annual_income']:,.0f}", freq
+                            ])
+                        det_tbl = Table(det_rows, colWidths=[4*cm,1.5*cm,2*cm,2.5*cm,2.5*cm,2.5*cm,2*cm])
+                        det_tbl.setStyle(TableStyle([
+                            ("BACKGROUND",(0,0),(-1,0),NAVY_M),("TEXTCOLOR",(0,0),(-1,0),WHITE_M),
+                            ("FONTNAME",(0,0),(-1,-1),font_m),("FONTSIZE",(0,0),(-1,-1),7.5),
+                            ("ALIGN",(0,0),(-1,-1),"CENTER"),
+                            ("ROWBACKGROUNDS",(0,1),(-1,-1),[BG_M,WHITE_M]),
+                            ("GRID",(0,0),(-1,-1),0.3,colors.HexColor("#dddddd")),
+                            ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
+                        ]))
+                        story_m.append(det_tbl)
+                        story_m.append(Spacer(1, 0.4*cm))
+
+                        # 逐月現金流
+                        story_m.append(Paragraph("三、逐月現金流明細", h2_s_m))
+                        story_m.append(HRFlowable(width="100%", thickness=2, color=GOLD_M, spaceAfter=8))
+                        months_pdf_m = ["一月","二月","三月","四月","五月","六月",
+                                        "七月","八月","九月","十月","十一月","十二月"]
+                        cf_hdr_m = ["月份"] + [f"{x['label']}.{x['name'][:6]}" for x in cf_manual_items] + ["當月合計"]
+                        cf_rows_m = [cf_hdr_m]
+                        for mi, mname in enumerate(months_pdf_m):
+                            m = mi + 1
+                            row = [mname]
+                            for item in cf_manual_items:
+                                if item["type"] == "FUND":
+                                    row.append(f"${item['annual_income']/12:,.0f}")
+                                else:
+                                    row.append(f"${item['annual_income']/2:,.0f}" if m in item["pay_months"] else "—")
+                            row.append(f"${monthly_total_m[mi]:,.0f}")
+                            cf_rows_m.append(row)
+                        total_row_m = ["全年合計"] + [f"${x['annual_income']:,.0f}" for x in cf_manual_items] + [f"${total_income_m:,.0f}"]
+                        cf_rows_m.append(total_row_m)
+                        n_cf_m = len(cf_hdr_m)
+                        cf_tbl_m = Table(cf_rows_m, colWidths=[17*cm/n_cf_m]*n_cf_m)
+                        cf_tbl_m.setStyle(TableStyle([
+                            ("BACKGROUND",(0,0),(-1,0),NAVY_M),("TEXTCOLOR",(0,0),(-1,0),WHITE_M),
+                            ("BACKGROUND",(0,-1),(-1,-1),NAVY_M),("TEXTCOLOR",(0,-1),(-1,-1),colors.HexColor("#ffd700")),
+                            ("BACKGROUND",(-1,1),(-1,-2),colors.HexColor("#fff9e6")),
+                            ("TEXTCOLOR",(-1,1),(-1,-2),colors.HexColor("#b8860b")),
+                            ("FONTNAME",(0,0),(-1,-1),font_m),("FONTSIZE",(0,0),(-1,-1),7),
+                            ("ALIGN",(0,0),(-1,-1),"CENTER"),
+                            ("ROWBACKGROUNDS",(0,1),(-1,-2),[BG_M,WHITE_M]),
+                            ("GRID",(0,0),(-1,-1),0.3,colors.HexColor("#dddddd")),
+                            ("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3),
+                        ]))
+                        story_m.append(cf_tbl_m)
+                        story_m.append(Spacer(1, 0.5*cm))
+                        story_m.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#888"), spaceAfter=6))
+                        story_m.append(Paragraph("⚠️ 免責聲明：配息金額為估算值，實際以各機構公告為準。僅供內部教育訓練使用，請勿外流。", warn_s_m))
+
+                        doc_m.build(story_m)
+                        buf_m.seek(0)
+                        try:
+                            from pypdf import PdfReader, PdfWriter
+                            reader_m = PdfReader(buf_m)
+                            writer_m = PdfWriter()
+                            for page in reader_m.pages:
+                                writer_m.add_page(page)
+                            writer_m.encrypt("5428")
+                            enc_buf_m = io.BytesIO()
+                            writer_m.write(enc_buf_m)
+                            enc_buf_m.seek(0)
+                            pdf_out_m = enc_buf_m
+                        except:
+                            buf_m.seek(0)
+                            pdf_out_m = buf_m
+
+                        st.download_button(
+                            "📥 下載手動配置 PDF",
+                            data=pdf_out_m,
+                            file_name=f"手動配置現金流_{datetime.today().strftime('%Y%m%d')}.pdf",
+                            mime="application/pdf",
+                            use_container_width=True
+                        )
+                        st.info("PDF 開啟密碼：**5428**")
+                    except Exception as e:
+                        st.error(f"PDF 生成失敗：{e}")
+                        import traceback
+                        st.code(traceback.format_exc())
+
 st.markdown("---")
 st.warning("⚠️ 本工具所有計算均基於歷史資料，不代表未來績效。僅供內部教育訓練使用，請勿外流。")
