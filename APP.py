@@ -837,7 +837,7 @@ if st.session_state.result_ready:
                     else: return "background-color: #ffcdd2; color: #b71c1c"
                 except: return ""
             st.dataframe(
-                prob_df.style.applymap(color_winrate, subset=["正報酬機率"]),
+                prob_df.style.map(color_winrate, subset=["正報酬機率"]),
                 use_container_width=True, hide_index=True
             )
             st.caption("※ 基於歷史滾動報酬計算，樣本期間越短樣本數越多，結果僅供參考。")
