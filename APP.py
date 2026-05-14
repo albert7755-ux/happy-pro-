@@ -612,7 +612,7 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
     for pname, days in holding_periods_pdf.items():
         row = [pname]
         for sname, series in all_series_pdf.items():
-            rolling = (1 + series).rolling(days).apply(_np.prod, raw=True) - 1
+            rolling = (1 + series).rolling(days).apply(np.prod, raw=True) - 1
             rolling = rolling.dropna()
             if len(rolling) > 0:
                 row.append(f"{(rolling > 0).mean():.1%}")
