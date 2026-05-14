@@ -329,12 +329,22 @@ def calc_portfolio_drawdown(returns_df, weights):
     port_returns = returns_df.dot(weights)
     return calc_max_drawdown(port_returns)
 
-def run_optimization(returns_df, method="max_sharpe", target_return=0.08):
+def run_optimization(returns_df, method="max_sharpe", target_return=0.08, mdd_limit=0.5):
     n = len(returns_df.columns)
     mean_ret = returns_df.mean() * 252
     cov = returns_df.cov() * 252
     bounds = tuple((0, 1) for _ in range(n))
     constraints = [{"type": "eq", "fun": lambda x: np.sum(x) - 1}]
+    # 加入最大回撤限制（用組合歷史回撤近似）
+    if mdd_limit < 0.5:
+        port_daily = returns_df.values
+        def mdd_constraint(w):
+            port_ret_series = port_daily.dot(w)
+            cum = np.cumprod(1 + port_ret_series)
+            peak = np.maximum.accumulate(cum)
+            drawdown = (cum - peak) / peak
+            return mdd_limit + drawdown.min()  # >= 0 表示回撤在限制內
+        constraints.append({"type": "ineq", "fun": mdd_constraint})
     init = [1/n] * n
     if method == "max_sharpe":
         def neg_sharpe(w):
@@ -527,7 +537,7 @@ st.markdown("---")
 BOND_DB = load_bond_master()
 
 st.sidebar.header("1. 回測期間")
-period_options = {"1年": 1, "2年": 2, "3年": 3, "5年": 5}
+period_options = {"1年": 1, "2年": 2, "3年": 3, "4年": 4, "5年": 5}
 period_label = st.sidebar.radio("選擇回測期間", list(period_options.keys()), horizontal=True)
 years = period_options[period_label]
 st.sidebar.header("2. 優化目標")
@@ -537,6 +547,14 @@ method = method_map[method_label]
 target_return = 0.08
 if method == "target_return":
     target_return = st.sidebar.slider("目標年化報酬率 %", 1.0, 20.0, 8.0, 0.5) / 100
+
+st.sidebar.header("3. 最大回撤限制")
+mdd_limit_pct = st.sidebar.slider(
+    "可接受最大回撤上限 %",
+    min_value=5, max_value=50, value=50, step=1,
+    help="設定越小，組合越保守；50% 表示不限制"
+)
+mdd_limit = mdd_limit_pct / 100
 
 tab_select, tab_result = st.tabs(["📋 標的選擇", "📊 分析結果"])
 
@@ -677,7 +695,7 @@ if run_btn and total_selected >= 2:
                 st.stop()
 
             ann_ret, ann_vol, sharpe_r = calc_stats(returns_df)
-            weights = run_optimization(returns_df, method=method, target_return=target_return)
+            weights = run_optimization(returns_df, method=method, target_return=target_return, mdd_limit=mdd_limit)
             cov = returns_df.cov() * 252
             # 組合年化報酬：用實際組合日報酬序列算年度平均
             port_daily_ret = returns_df.dot(weights)
