@@ -166,6 +166,7 @@ FUND_YIELD_DB = {
     "F00000T1CG_FO": 0.0885,
     "F00000V557_FO": 0.0824,
     "F00001EQPP_FO": 0.0904,
+    "F000015CRE_FO": 0.0821,
 }
 
 BOND_CURRENT_YIELD = {
@@ -252,6 +253,7 @@ FUND_DB = {
     "F00000T1CG_FO": "聯博-優化波動股票基金",
     "F00000V557_FO": "聯博全球多元",
     "F00001EQPP_FO": "富邦台美雙星多重",
+    "F000015CRE_FO": "富蘭克林穩定月收益A(acc)",
 }
 
 # FINRA ISIN → ticker 對照（用於比對 bond-data 試算表名稱）
