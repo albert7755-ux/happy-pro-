@@ -799,20 +799,8 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
     story.append(Paragraph("⚠️ 免責聲明：本報告所有數據均基於歷史資料計算，不代表未來績效。配息金額以各機構實際公告為準。僅供內部教育訓練使用，請勿外流。", warn_s))
     doc.build(story)
     buf.seek(0)
-    try:
-        from pypdf import PdfReader, PdfWriter
-        reader = PdfReader(buf)
-        writer = PdfWriter()
-        for page in reader.pages:
-            writer.add_page(page)
-        writer.encrypt("5428")
-        enc_buf = io.BytesIO()
-        writer.write(enc_buf)
-        enc_buf.seek(0)
-        return enc_buf
-    except:
-        buf.seek(0)
-        return buf
+    buf.seek(0)
+    return buf
 
 # ==========================================
 # 主介面
@@ -1353,7 +1341,7 @@ if st.session_state.result_ready:
             with st.spinner("生成中..."):
                 pdf_buf = generate_pdf(weights, labels, ann_ret, ann_vol, sharpe_r, returns_df, port_ret, port_vol, port_sharpe, st.session_state.method_label, st.session_state.period_label)
                 st.download_button("📥 下載 PDF 報告", data=pdf_buf, file_name=f"最適組合_{datetime.today().strftime('%Y%m%d')}.pdf", mime="application/pdf", use_container_width=True)
-                st.info("PDF 開啟密碼：**5428**")
+
 
 # ==========================================
 # 手動配置試算分頁
@@ -1645,20 +1633,8 @@ with tab_manual:
 
                         doc_m.build(story_m)
                         buf_m.seek(0)
-                        try:
-                            from pypdf import PdfReader, PdfWriter
-                            reader_m = PdfReader(buf_m)
-                            writer_m = PdfWriter()
-                            for page in reader_m.pages:
-                                writer_m.add_page(page)
-                            writer_m.encrypt("5428")
-                            enc_buf_m = io.BytesIO()
-                            writer_m.write(enc_buf_m)
-                            enc_buf_m.seek(0)
-                            pdf_out_m = enc_buf_m
-                        except:
-                            buf_m.seek(0)
-                            pdf_out_m = buf_m
+                        buf_m.seek(0)
+                        pdf_out_m = buf_m
 
                         st.download_button(
                             "📥 下載手動配置 PDF",
@@ -1667,7 +1643,7 @@ with tab_manual:
                             mime="application/pdf",
                             use_container_width=True
                         )
-                        st.info("PDF 開啟密碼：**5428**")
+        
                     except Exception as e:
                         st.error(f"PDF 生成失敗：{e}")
                         import traceback
