@@ -569,27 +569,32 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
     story.append(w_tbl)
     story.append(Spacer(1, 0.3*cm))
     # 各標的完整統計（含MDD）
-    stats_hdr = ["標的", "配置比例", "年化報酬", "年化波動", "夏普比率", "最大回撤"]
+    stats_hdr = ["標的", "建議配置", "年化報酬", "年化波動", "夏普比率", "最大回撤"]
     stats_rows = [stats_hdr]
     for i, lbl in enumerate(labels):
         w_i = weights[i]
-        if w_i <= 0.001:
-            continue
         mdd_val = "-"
         if lbl in returns_df.columns:
             cum = (1 + returns_df[lbl]).cumprod()
             peak = cum.cummax()
             mdd_val = f"{((cum - peak) / peak).min():.2%}"
+        # 配置0%用灰色標示
         stats_rows.append([
             lbl[:14], f"{w_i:.1%}",
             f"{ann_ret.iloc[i]:.2%}", f"{ann_vol.iloc[i]:.2%}",
             f"{sharpe.iloc[i]:.2f}", mdd_val
         ])
     stats_tbl = Table(stats_rows, colWidths=[5.5*cm, 2*cm, 2.2*cm, 2.2*cm, 2*cm, 2.1*cm])
-    stats_tbl.setStyle(TableStyle([
+    # 0%配置的行用灰色標示
+    stats_style = [
         ("BACKGROUND",(0,0),(-1,0),NAVY),("TEXTCOLOR",(0,0),(-1,0),WHITE),
         ("FONTNAME",(0,0),(-1,-1),font),("FONTSIZE",(0,0),(-1,-1),8),
         ("ALIGN",(0,0),(-1,-1),"CENTER"),("ROWBACKGROUNDS",(0,1),(-1,-1),[BG,WHITE]),
+    ]
+    for ri in range(1, len(stats_rows)):
+        if stats_rows[ri][1] == "0.0%":
+            stats_style.append(("TEXTCOLOR",(0,ri),(-1,ri),colors.HexColor("#999999")))
+    stats_tbl.setStyle(TableStyle(stats_style + [
         ("GRID",(0,0),(-1,-1),0.3,colors.HexColor("#dddddd")),
         ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
     ]))
@@ -626,44 +631,8 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
     story.append(corr_tbl)
     story.append(Spacer(1, 0.3*cm))
     story.append(Paragraph("※ 紅底=高相關(>0.7)，綠底=低相關(<0.3)。低相關標的有助分散風險。", small_s))
-    story.append(Spacer(1, 0.4*cm))
 
-    # 有效前緣關鍵點
-    story.append(Paragraph("四、有效前緣關鍵點", h2_s))
-    story.append(HRFlowable(width="100%", thickness=2, color=GOLD, spaceAfter=8))
-    ef_data = [["策略", "年化報酬", "年化波動", "夏普比率"]]
-    # 最大夏普
-    opt_w_sharpe_pdf = run_optimization(returns_df, method="max_sharpe")
-    cov_pdf = returns_df.cov() * 252
-    mr_pdf = returns_df.mean() * 252
-    sh_vol = float(np.sqrt(np.dot(opt_w_sharpe_pdf.T, np.dot(cov_pdf, opt_w_sharpe_pdf))))
-    sh_ret = float(np.dot(opt_w_sharpe_pdf, mr_pdf))
-    sh_sr  = (sh_ret - RISK_FREE_RATE) / sh_vol
-    ef_data.append(["最大夏普比率", f"{sh_ret:.2%}", f"{sh_vol:.2%}", f"{sh_sr:.2f}"])
-    # 最小風險
-    opt_w_minvol_pdf = run_optimization(returns_df, method="min_vol")
-    mv_vol = float(np.sqrt(np.dot(opt_w_minvol_pdf.T, np.dot(cov_pdf, opt_w_minvol_pdf))))
-    mv_ret = float(np.dot(opt_w_minvol_pdf, mr_pdf))
-    mv_sr  = (mv_ret - RISK_FREE_RATE) / mv_vol
-    ef_data.append(["最小風險", f"{mv_ret:.2%}", f"{mv_vol:.2%}", f"{mv_sr:.2f}"])
-    # 當前投組
-    cur_vol_pdf = float(np.sqrt(np.dot(weights.T, np.dot(cov_pdf, weights))))
-    cur_ret_pdf = float(port_ret)
-    cur_sr_pdf  = (cur_ret_pdf - RISK_FREE_RATE) / cur_vol_pdf
-    ef_data.append([f"目前投組（{method_name}）", f"{cur_ret_pdf:.2%}", f"{cur_vol_pdf:.2%}", f"{cur_sr_pdf:.2f}"])
-    ef_tbl = Table(ef_data, colWidths=[6*cm, 3.5*cm, 3.5*cm, 4*cm])
-    ef_tbl.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),NAVY),("TEXTCOLOR",(0,0),(-1,0),WHITE),
-        ("BACKGROUND",(0,3),(-1,3),colors.HexColor("#fff3cd")),
-        ("TEXTCOLOR",(0,3),(-1,3),colors.HexColor("#856404")),
-        ("FONTNAME",(0,0),(-1,-1),font),("FONTSIZE",(0,0),(-1,-1),9),
-        ("ALIGN",(0,0),(-1,-1),"CENTER"),("ROWBACKGROUNDS",(0,1),(-1,2),[BG,WHITE]),
-        ("GRID",(0,0),(-1,-1),0.3,colors.HexColor("#dddddd")),
-        ("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5),
-    ]))
-    story.append(ef_tbl)
-
-    # ── 五、持有期間正報酬機率 ──
+    # ── 四、持有期間正報酬機率 ──
     story.append(PageBreak())
     story.append(Paragraph("四、持有期間正報酬機率", h2_s))
     story.append(HRFlowable(width="100%", thickness=2, color=GOLD, spaceAfter=8))
