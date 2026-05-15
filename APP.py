@@ -658,7 +658,7 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
         # KPI 摘要
         kpi_cf = [
             ["投資本金", "年化配息率", "年領總息", "月均領息"],
-            [f"${principal_cf_pdf:,.0f}", f"{avg_yield_pdf:.2f}%", f"${total_income_pdf:,.0f}", f"${total_income_pdf/12:,.0f}"],
+            [f"NT${principal_cf_pdf:,.0f}", f"{avg_yield_pdf:.2f}%", f"NT${total_income_pdf:,.0f}", f"NT${total_income_pdf/12:,.0f}"],
         ]
         kpi_cf_tbl = Table(kpi_cf, colWidths=[4.25*cm]*4)
         kpi_cf_tbl.setStyle(TableStyle([
@@ -679,8 +679,8 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
             freq = "月配" if item["type"] == "FUND" else f"{item['pay_months'][0]}月/{item['pay_months'][1]}月"
             detail_rows_pdf.append([
                 item["name"][:12], item["type"],
-                f"{item['weight']:.1%}", f"${item['amount']:,.0f}",
-                f"{item['yield_pct']:.2%}", f"${item['annual_income']:,.0f}", freq
+                f"{item['weight']:.1%}", f"NT${item['amount']:,.0f}",
+                f"{item['yield_pct']:.2%}", f"NT${item['annual_income']:,.0f}", freq
             ])
         detail_tbl = Table(detail_rows_pdf, colWidths=[4*cm,1.5*cm,2*cm,2.5*cm,2.5*cm,2.5*cm,2*cm])
         detail_tbl.setStyle(TableStyle([
@@ -703,16 +703,16 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
             row = [mname]
             for item in cf_items_pdf:
                 if item["type"] == "FUND":
-                    row.append(f"${item['annual_income']/12:,.0f}")
+                    row.append(f"NT${item['annual_income']/12:,.0f}")
                 else:
                     if m in item["pay_months"]:
-                        row.append(f"${item['annual_income']/2:,.0f}")
+                        row.append(f"NT${item['annual_income']/2:,.0f}")
                     else:
                         row.append("—")
             row.append(f"${monthly_total_pdf[m_idx]:,.0f}")
             cf_tbl_rows.append(row)
         # 全年合計行
-        total_row = ["全年合計"] + [f"${x['annual_income']:,.0f}" for x in cf_items_pdf] + [f"${total_income_pdf:,.0f}"]
+        total_row = ["全年合計"] + [f"${x['annual_income']:,.0f}" for x in cf_items_pdf] + [f"NT${total_income_pdf:,.0f}"]
         cf_tbl_rows.append(total_row)
 
         n_cf_cols = len(cf_hdr)
@@ -1130,7 +1130,7 @@ if st.session_state.result_ready:
         st.subheader("💰 配息現金流試算")
         st.caption("根據最適配置比例自動帶入，債券使用當前殖利率，基金配息率可手動調整。")
 
-        principal_cf = st.number_input("投資本金（美元）", min_value=10000, max_value=10000000, value=1000000, step=10000, format="%d")
+        principal_cf = st.number_input("投資本金（台幣）", min_value=100000, max_value=100000000, value=10000000, step=100000, format="%d")
 
         # 基金配息率調整
         fund_labels_in = [lbl for lbl, w in zip(labels, weights) if w > 0.001 and lbl in [FUND_DB.get(k, "") for k in FUND_DB]]
@@ -1206,10 +1206,10 @@ if st.session_state.result_ready:
             max_m_idx = monthly_total.index(max(monthly_total))
 
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("💰 本金", f"${principal_cf:,.0f}")
+            c1.metric("💰 本金", f"NT${principal_cf:,.0f}")
             c2.metric("📈 年化配息率", f"{avg_yield_cf:.2f}%")
-            c3.metric("🎯 年領總息", f"${total_income_cf:,.0f}")
-            c4.metric("📅 月均領息", f"${total_income_cf/12:,.0f}")
+            c3.metric("🎯 年領總息", f"NT${total_income_cf:,.0f}")
+            c4.metric("📅 月均領息", f"NT${total_income_cf/12:,.0f}")
 
             st.markdown("---")
             # 逐月現金流表格
@@ -1268,10 +1268,10 @@ if st.session_state.result_ready:
                     "標的": item["name"],
                     "類型": item["type"],
                     "配置比例": f"{item['weight']:.1%}",
-                    "配置金額": f"${item['amount']:,.0f}",
+                    "配置金額": f"NT${item['amount']:,.0f}",
                     "殖利率/配息率": f"{item['yield_pct']:.2%}",
-                    "年配息": f"${item['annual_income']:,.0f}",
-                    "月均配息": f"${item['annual_income']/12:,.0f}",
+                    "年配息": f"NT${item['annual_income']:,.0f}",
+                    "月均配息": f"NT${item['annual_income']/12:,.0f}",
                     "配息頻率": "月配" if item["type"] == "FUND" else f"{item['pay_months'][0]}月/{item['pay_months'][1]}月",
                 })
             st.dataframe(pd.DataFrame(detail_rows), use_container_width=True, hide_index=True)
@@ -1298,8 +1298,8 @@ with tab_manual:
     st.subheader("✏️ 手動配置現金流試算")
     st.caption("不依賴優化器，自行輸入各標的配置金額或比例，直接看配息現金流。")
 
-    manual_principal = st.number_input("投資本金（美元）", min_value=10000, max_value=10000000,
-                                        value=1000000, step=10000, format="%d", key="manual_principal")
+    manual_principal = st.number_input("投資本金（台幣）", min_value=100000, max_value=100000000,
+                                        value=10000000, step=100000, format="%d", key="manual_principal")
 
     st.markdown("---")
     st.markdown("**選擇標的與配置**")
@@ -1410,10 +1410,10 @@ with tab_manual:
 
             # KPI
             k1, k2, k3, k4 = st.columns(4)
-            k1.metric("💰 本金", f"${manual_principal:,.0f}")
+            k1.metric("💰 本金", f"NT${manual_principal:,.0f}")
             k2.metric("📈 年化配息率", f"{avg_yield_m:.2f}%")
-            k3.metric("🎯 年領總息", f"${total_income_m:,.0f}")
-            k4.metric("📅 月均領息", f"${total_income_m/12:,.0f}")
+            k3.metric("🎯 年領總息", f"NT${total_income_m:,.0f}")
+            k4.metric("📅 月均領息", f"NT${total_income_m/12:,.0f}")
 
             # 逐月現金流表
             st.markdown("---")
@@ -1503,8 +1503,8 @@ with tab_manual:
                         story_m.append(HRFlowable(width="100%", thickness=2, color=GOLD_M, spaceAfter=8))
                         kpi_m = [
                             ["投資本金", "年化配息率", "年領總息", "月均領息"],
-                            [f"${manual_principal:,.0f}", f"{avg_yield_m:.2f}%",
-                             f"${total_income_m:,.0f}", f"${total_income_m/12:,.0f}"],
+                            [f"NT${manual_principal:,.0f}", f"{avg_yield_m:.2f}%",
+                             f"NT${total_income_m:,.0f}", f"NT${total_income_m/12:,.0f}"],
                         ]
                         kpi_m_tbl = Table(kpi_m, colWidths=[4.25*cm]*4)
                         kpi_m_tbl.setStyle(TableStyle([
@@ -1527,8 +1527,8 @@ with tab_manual:
                             freq = "月配" if item["type"] == "FUND" else f"{item['pay_months'][0]}月/{item['pay_months'][1]}月"
                             det_rows.append([
                                 item["name"][:12], item["type"],
-                                f"{item['weight']:.1%}", f"${item['amount']:,.0f}",
-                                f"{item['yield_pct']:.2%}", f"${item['annual_income']:,.0f}", freq
+                                f"{item['weight']:.1%}", f"NT${item['amount']:,.0f}",
+                                f"{item['yield_pct']:.2%}", f"NT${item['annual_income']:,.0f}", freq
                             ])
                         det_tbl = Table(det_rows, colWidths=[4*cm,1.5*cm,2*cm,2.5*cm,2.5*cm,2.5*cm,2*cm])
                         det_tbl.setStyle(TableStyle([
@@ -1554,12 +1554,12 @@ with tab_manual:
                             row = [mname]
                             for item in cf_manual_items:
                                 if item["type"] == "FUND":
-                                    row.append(f"${item['annual_income']/12:,.0f}")
+                                    row.append(f"NT${item['annual_income']/12:,.0f}")
                                 else:
-                                    row.append(f"${item['annual_income']/2:,.0f}" if m in item["pay_months"] else "—")
-                            row.append(f"${monthly_total_m[mi]:,.0f}")
+                                    row.append(f"NT${item['annual_income']/2:,.0f}" if m in item["pay_months"] else "—")
+                            row.append(f"NT${monthly_total_m[mi]:,.0f}")
                             cf_rows_m.append(row)
-                        total_row_m = ["全年合計"] + [f"${x['annual_income']:,.0f}" for x in cf_manual_items] + [f"${total_income_m:,.0f}"]
+                        total_row_m = ["全年合計"] + [f"${x['annual_income']:,.0f}" for x in cf_manual_items] + [f"NT${total_income_m:,.0f}"]
                         cf_rows_m.append(total_row_m)
                         n_cf_m = len(cf_hdr_m)
                         cf_tbl_m = Table(cf_rows_m, colWidths=[17*cm/n_cf_m]*n_cf_m)
