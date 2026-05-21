@@ -801,7 +801,7 @@ mdd_limit_pct = st.sidebar.slider(
 )
 mdd_limit = mdd_limit_pct / 100
 
-tab_select, tab_result, tab_manual = st.tabs(["📋 標的選擇", "📊 分析結果", "✏️ 手動配置試算"])
+tab_select, tab_result, tab_manual, tab_transform = st.tabs(["📋 標的選擇", "📊 分析結果", "✏️ 手動配置試算", "🔄 投組改造模擬器"])
 
 with tab_select:
     st.subheader("選擇要納入的標的")
@@ -1826,3 +1826,462 @@ with tab_manual:
 
 st.markdown("---")
 st.warning("⚠️ 本工具所有計算均基於歷史資料，不代表未來績效。僅供內部教育訓練使用，請勿外流。")
+
+# ==========================================
+# 投組改造模擬器分頁
+# ==========================================
+with tab_transform:
+    st.subheader("🔄 投組改造模擬器")
+    st.markdown("""
+    輸入客戶**現有投組**，再選擇想加入的**新標的**，系統會自動計算改造前後的差異，
+    讓你用數字說服客戶為什麼要調整！
+    """)
+    st.markdown("---")
+
+    # ── Step 1：現有投組 ──
+    st.markdown("### Step 1　輸入現有投組")
+    st.caption("請選擇客戶目前持有的標的，並輸入各自的持有比例（合計需為 100%）")
+
+    if "transform_holdings" not in st.session_state:
+        st.session_state.transform_holdings = [{"label": "", "weight": 0.0}]
+
+    # 建立所有可選標的清單
+    all_available = {}
+    for isin, info in BOND_DB.items():
+        if info.get("coupon") and info.get("maturity"):
+            display = f"{info['issuer']} {info['coupon']}% {info['maturity']}"
+            all_available[display] = {"type": "BOND", "isin": isin, "name": info["issuer"]}
+    for ticker, name in FUND_DB.items():
+        all_available[name] = {"type": "FUND", "ticker": ticker, "name": name}
+
+    all_display_options = sorted(all_available.keys())
+
+    # 現有持倉輸入區
+    holdings_valid = []
+    total_weight_now = 0.0
+
+    hold_cols = st.columns([4, 2, 1])
+    hold_cols[0].markdown("**標的**")
+    hold_cols[1].markdown("**持有比例 %**")
+    hold_cols[2].markdown("**移除**")
+
+    to_remove = []
+    for idx, holding in enumerate(st.session_state.transform_holdings):
+        c1, c2, c3 = st.columns([4, 2, 1])
+        with c1:
+            sel = st.selectbox(
+                f"現有標的 {idx+1}",
+                options=["（請選擇）"] + all_display_options,
+                key=f"tr_hold_sel_{idx}",
+                label_visibility="collapsed"
+            )
+        with c2:
+            w = st.number_input(
+                f"比例 {idx+1}",
+                min_value=0.0, max_value=100.0, value=0.0, step=1.0,
+                key=f"tr_hold_w_{idx}",
+                label_visibility="collapsed"
+            )
+        with c3:
+            if st.button("✕", key=f"tr_hold_rm_{idx}", help="移除此標的"):
+                to_remove.append(idx)
+        if sel != "（請選擇）" and w > 0:
+            holdings_valid.append({"display": sel, "weight": w / 100, **all_available[sel]})
+            total_weight_now += w
+
+    for idx in reversed(to_remove):
+        st.session_state.transform_holdings.pop(idx)
+        st.rerun()
+
+    col_add, col_total = st.columns([2, 2])
+    with col_add:
+        if st.button("➕ 新增標的", key="tr_add_holding"):
+            st.session_state.transform_holdings.append({"label": "", "weight": 0.0})
+            st.rerun()
+    with col_total:
+        weight_color = "🟢" if abs(total_weight_now - 100) < 0.1 else "🔴"
+        st.markdown(f"**合計：{weight_color} {total_weight_now:.1f}%**（需為 100%）")
+
+    st.markdown("---")
+
+    # ── Step 2：選擇要加入的新標的 ──
+    st.markdown("### Step 2　選擇要加入（或替換）的新標的")
+    st.caption("從系統現有清單中選擇，系統會重新優化加入後的最佳配置")
+
+    col_new1, col_new2, col_new3 = st.columns(3)
+    with col_new1:
+        new_bonds = st.multiselect(
+            "📎 加入債券",
+            options=sorted([f"{v['issuer']} {v['coupon']}% {v['maturity']}" for k, v in BOND_DB.items() if v.get("coupon") and v.get("maturity")]),
+            default=[], key="tr_new_bonds"
+        )
+    with col_new2:
+        new_funds = st.multiselect(
+            "📊 加入基金",
+            options=list(FUND_DB.keys()),
+            format_func=lambda x: FUND_DB[x],
+            default=[], key="tr_new_funds"
+        )
+    with col_new3:
+        new_etf_input = st.text_area(
+            "📈 加入股票/ETF（每行一個）",
+            placeholder="例如：\nSPY\nQQQ",
+            height=100, key="tr_new_etf"
+        )
+        new_etfs = [t.strip().upper() for t in new_etf_input.replace(",", " ").split() if t.strip()]
+
+    st.markdown("---")
+
+    # ── Step 3：回測期間設定 ──
+    st.markdown("### Step 3　設定回測期間與優化目標")
+    tr_col1, tr_col2, tr_col3 = st.columns(3)
+    with tr_col1:
+        tr_years = st.select_slider("回測期間", options=[1, 2, 3, 4, 5], value=3, key="tr_years")
+    with tr_col2:
+        tr_method_label = st.radio("優化目標", ["最大夏普比率", "最小風險"], key="tr_method", horizontal=True)
+        tr_method = "max_sharpe" if tr_method_label == "最大夏普比率" else "min_vol"
+    with tr_col3:
+        tr_principal = st.number_input("模擬投資本金（台幣）", min_value=100000, max_value=100000000,
+                                        value=10000000, step=100000, format="%d", key="tr_principal")
+
+    # ── 執行比較 ──
+    run_transform = st.button("🔄 開始改造模擬", type="primary", use_container_width=True, key="run_transform_btn",
+                               disabled=(len(holdings_valid) < 1 or abs(total_weight_now - 100) > 1))
+
+    if abs(total_weight_now - 100) > 1 and len(holdings_valid) > 0:
+        st.warning("⚠️ 現有投組比例合計不等於 100%，請調整後再執行！")
+
+    if run_transform and len(holdings_valid) >= 1 and abs(total_weight_now - 100) <= 1:
+        with st.spinner("正在讀取資料並計算改造前後差異..."):
+            try:
+                tr_end   = pd.Timestamp.today()
+                tr_start = tr_end - pd.DateOffset(years=tr_years)
+
+                bond_sheets = list_sheets_in_folder(BOND_FOLDER_ID)
+                fund_sheets = list_sheets_in_folder(FUND_FOLDER_ID)
+
+                vclt_raw = yf.download("VCLT", start=tr_start - pd.DateOffset(years=3), end=tr_end, auto_adjust=True, progress=False)["Close"].squeeze()
+                lqd_raw  = yf.download("LQD",  start=tr_start - pd.DateOffset(years=3), end=tr_end, auto_adjust=True, progress=False)["Close"].squeeze()
+                vclt_ret = vclt_raw.pct_change().dropna()
+                lqd_ret  = lqd_raw.pct_change().dropna()
+
+                def load_series_for(asset_info):
+                    """根據資產資訊載入報酬序列"""
+                    asset_type = asset_info.get("type")
+                    name = asset_info.get("name", "")
+
+                    if asset_type == "BOND":
+                        isin = asset_info.get("isin")
+                        info = BOND_DB.get(isin, {})
+                        maturity_year = int(info.get("maturity", CUTOFF_YEAR)) if info.get("maturity") else CUTOFF_YEAR
+                        proxy_ret = vclt_ret if maturity_year >= CUTOFF_YEAR else lqd_ret
+                        coupon = info.get("coupon", 5.0)
+
+                        sheet_id = None
+                        finra_ticker = FINRA_ISIN_TO_TICKER.get(isin)
+                        if finra_ticker:
+                            for sname, sid in bond_sheets.items():
+                                if finra_ticker in sname:
+                                    sheet_id = sid
+                                    break
+                        if not sheet_id and isin in LUXSE_ISIN_TO_TICKER:
+                            for sname, sid in bond_sheets.items():
+                                if isin in sname:
+                                    sheet_id = sid
+                                    break
+                        if not sheet_id:
+                            for sname, sid in bond_sheets.items():
+                                if isin in sname:
+                                    sheet_id = sid
+                                    break
+
+                        if sheet_id:
+                            try:
+                                raw = read_sheet_as_series(sheet_id, name)
+                                raw = raw[raw.index >= tr_start - pd.DateOffset(years=3)]
+                                raw = raw.reindex(proxy_ret.index, method="ffill").dropna()
+                                price_ret = raw.pct_change().dropna()
+                                daily_coupon = (coupon / 100) / 365
+                                tri_ret = price_ret + daily_coupon
+                                if len(tri_ret) < 30:
+                                    tri_ret = proxy_ret.copy()
+                                    tri_ret.name = name
+                            except:
+                                tri_ret = proxy_ret.copy()
+                                tri_ret.name = name
+                        else:
+                            tri_ret = proxy_ret.copy()
+                            tri_ret.name = name
+                        return name, tri_ret
+
+                    elif asset_type == "FUND":
+                        ticker = asset_info.get("ticker")
+                        sheet_id = None
+                        for sname, sid in fund_sheets.items():
+                            if ticker and ticker.replace("_FO","") in sname:
+                                sheet_id = sid
+                                break
+                        if sheet_id:
+                            try:
+                                raw = read_sheet_as_series(sheet_id, name)
+                                raw = raw[raw.index >= tr_start - pd.DateOffset(years=3)]
+                                return name, raw.pct_change().dropna().rename(name)
+                            except:
+                                pass
+                        return None, None
+
+                    else:  # ETF/Stock
+                        try:
+                            raw = yf.download(name, start=tr_start - pd.DateOffset(years=1), end=tr_end, auto_adjust=True, progress=False)["Close"].squeeze()
+                            if raw.empty:
+                                return None, None
+                            return name, raw.pct_change().dropna().rename(name)
+                        except:
+                            return None, None
+
+                # ── 載入現有投組的資料 ──
+                before_series = {}
+                before_weights_fixed = {}
+                for holding in holdings_valid:
+                    n, s = load_series_for(holding)
+                    if n and s is not None and len(s) > 20:
+                        before_series[n] = s
+                        before_weights_fixed[n] = holding["weight"]
+
+                # ── 載入新增標的的資料 ──
+                new_assets_info = []
+                bond_names_map = {f"{v['issuer']} {v['coupon']}% {v['maturity']}": k for k, v in BOND_DB.items() if v.get("coupon") and v.get("maturity")}
+                for display in new_bonds:
+                    isin = bond_names_map.get(display)
+                    if isin:
+                        new_assets_info.append({"type": "BOND", "isin": isin, "name": BOND_DB[isin]["issuer"]})
+                for ticker in new_funds:
+                    new_assets_info.append({"type": "FUND", "ticker": ticker, "name": FUND_DB[ticker]})
+                for etf in new_etfs:
+                    new_assets_info.append({"type": "ETF", "name": etf})
+
+                after_series = dict(before_series)
+                for asset_info in new_assets_info:
+                    n, s = load_series_for(asset_info)
+                    if n and s is not None and len(s) > 20:
+                        after_series[n] = s
+
+                if len(before_series) < 1:
+                    st.error("無法讀取現有投組資料，請確認標的選擇！")
+                    st.stop()
+
+                # ── 建立報酬矩陣（取交集日期） ──
+                before_df = pd.DataFrame(before_series).dropna()
+                before_df = before_df[before_df.index >= tr_start]
+                after_df  = pd.DataFrame(after_series).dropna()
+                after_df  = after_df[after_df.index >= tr_start]
+
+                if len(before_df) < 20 or len(after_df) < 20:
+                    st.error("有效資料不足，請確認標的資料！")
+                    st.stop()
+
+                # ── 計算改造前（固定權重） ──
+                before_labels = list(before_df.columns)
+                before_w_arr = np.array([before_weights_fixed.get(lbl, 0) for lbl in before_labels])
+                before_w_arr = before_w_arr / before_w_arr.sum()  # 正規化
+
+                before_ann_ret, before_ann_vol, before_sharpe = calc_stats(before_df)
+                before_port_daily = before_df.dot(before_w_arr)
+                before_port_ret   = float(calc_annual_ret((1 + before_port_daily).cumprod()))
+                before_port_vol   = float(np.sqrt(np.dot(before_w_arr.T, np.dot(before_df.cov() * 252, before_w_arr))))
+                before_port_sharpe = (before_port_ret - RISK_FREE_RATE) / before_port_vol
+                before_port_mdd    = float(calc_portfolio_drawdown(before_df, before_w_arr))
+
+                # 現有投組配息估算
+                before_total_income = 0
+                for holding in holdings_valid:
+                    amt = tr_principal * holding["weight"]
+                    if holding["type"] == "BOND":
+                        isin = holding.get("isin")
+                        yld = BOND_CURRENT_YIELD.get(isin, BOND_DB.get(isin, {}).get("coupon", 5.0) / 100)
+                    else:
+                        ticker = holding.get("ticker")
+                        yld = FUND_YIELD_DB.get(ticker, 0.07)
+                    before_total_income += amt * yld
+
+                # ── 計算改造後（重新優化） ──
+                after_labels  = list(after_df.columns)
+                after_w_arr   = run_optimization(after_df, method=tr_method)
+                after_ann_ret, after_ann_vol, after_sharpe = calc_stats(after_df)
+                after_port_daily  = after_df.dot(after_w_arr)
+                after_port_ret    = float(calc_annual_ret((1 + after_port_daily).cumprod()))
+                after_port_vol    = float(np.sqrt(np.dot(after_w_arr.T, np.dot(after_df.cov() * 252, after_w_arr))))
+                after_port_sharpe = (after_port_ret - RISK_FREE_RATE) / after_port_vol
+                after_port_mdd    = float(calc_portfolio_drawdown(after_df, after_w_arr))
+
+                # 改造後配息估算
+                after_total_income = 0
+                for i, lbl in enumerate(after_labels):
+                    w = after_w_arr[i]
+                    if w < 0.001:
+                        continue
+                    amt = tr_principal * w
+                    isin   = next((k for k, v in BOND_DB.items() if v["issuer"] == lbl), None)
+                    ticker = next((k for k, v in FUND_DB.items() if v == lbl), None)
+                    if isin:
+                        yld = BOND_CURRENT_YIELD.get(isin, BOND_DB.get(isin, {}).get("coupon", 5.0) / 100)
+                    elif ticker:
+                        yld = FUND_YIELD_DB.get(ticker, 0.07)
+                    else:
+                        yld = 0  # ETF/股票不計配息
+                    after_total_income += amt * yld
+
+                # ── 顯示結果 ──
+                st.success("✅ 改造模擬完成！以下為改造前後比較：")
+                st.markdown("---")
+
+                # KPI 比較卡
+                st.markdown("### 📊 改造前後關鍵指標比較")
+                kpi_cols = st.columns(5)
+                metrics = [
+                    ("年化報酬", before_port_ret, after_port_ret, True, ".2%"),
+                    ("年化波動", before_port_vol, after_port_vol, False, ".2%"),
+                    ("夏普比率", before_port_sharpe, after_port_sharpe, True, ".2f"),
+                    ("最大回撤", before_port_mdd, after_port_mdd, False, ".2%"),
+                    ("年配息估算", before_total_income, after_total_income, True, ",.0f"),
+                ]
+                for col, (name, before_val, after_val, higher_better, fmt) in zip(kpi_cols, metrics):
+                    if fmt == ",.0f":
+                        b_str = f"NT${before_val:,.0f}"
+                        a_str = f"NT${after_val:,.0f}"
+                        delta_str = f"NT${after_val - before_val:+,.0f}"
+                    else:
+                        b_str = f"{before_val:{fmt}}"
+                        a_str = f"{after_val:{fmt}}"
+                        delta_str = f"{after_val - before_val:+{fmt}}"
+
+                    improved = (after_val > before_val) if higher_better else (after_val < before_val)
+                    col.metric(
+                        label=name,
+                        value=a_str,
+                        delta=f"{delta_str}（改造前：{b_str}）",
+                        delta_color="normal" if improved else "inverse"
+                    )
+
+                st.markdown("---")
+
+                # 兩欄：改造前 vs 改造後配置
+                st.markdown("### 📋 配置比較")
+                left_tr, right_tr = st.columns(2)
+
+                with left_tr:
+                    st.markdown("**🔴 改造前（現有投組）**")
+                    before_data = [{"標的": lbl, "持有比例": f"{before_weights_fixed.get(lbl, 0):.1%}",
+                                    "年化報酬": f"{before_ann_ret.get(lbl, before_ann_ret.iloc[i] if i < len(before_ann_ret) else 0):.2%}",
+                                    "夏普": f"{before_sharpe.iloc[i]:.2f}" if i < len(before_sharpe) else "-"}
+                                   for i, lbl in enumerate(before_labels)]
+                    st.dataframe(pd.DataFrame(before_data), hide_index=True, use_container_width=True)
+
+                    # 圓餅圖
+                    sig_b = [(lbl, before_weights_fixed.get(lbl, 0)) for lbl in before_labels if before_weights_fixed.get(lbl, 0) > 0.01]
+                    if sig_b:
+                        pie_b_l, pie_b_v = zip(*sig_b)
+                        fig_b = go.Figure(go.Pie(labels=pie_b_l, values=pie_b_v, hole=0.45, textinfo="none",
+                                                  marker=dict(colors=["#c62828","#e57373","#ef9a9a","#ffcdd2","#b71c1c"])))
+                        fig_b.update_layout(height=280, margin=dict(t=10, b=0),
+                                            legend=dict(font=dict(size=11)))
+                        st.plotly_chart(fig_b, use_container_width=True)
+
+                with right_tr:
+                    st.markdown("**🟢 改造後（科學最適化）**")
+                    after_data = [{"標的": lbl,
+                                   "建議配置": f"{after_w_arr[i]:.1%}",
+                                   "年化報酬": f"{after_ann_ret.iloc[i]:.2%}",
+                                   "夏普": f"{after_sharpe.iloc[i]:.2f}",
+                                   "狀態": "✨ 新增" if lbl not in before_series else "🔄 調整"}
+                                  for i, lbl in enumerate(after_labels) if after_w_arr[i] > 0.001]
+                    st.dataframe(pd.DataFrame(after_data), hide_index=True, use_container_width=True)
+
+                    sig_a = [(lbl, after_w_arr[i]) for i, lbl in enumerate(after_labels) if after_w_arr[i] > 0.01]
+                    if sig_a:
+                        pie_a_l, pie_a_v = zip(*sig_a)
+                        fig_a = go.Figure(go.Pie(labels=pie_a_l, values=pie_a_v, hole=0.45, textinfo="none",
+                                                  marker=dict(colors=["#1565c0","#2e7d32","#6a1b9a","#e65100","#00838f","#c8a030"])))
+                        fig_a.update_layout(height=280, margin=dict(t=10, b=0),
+                                            legend=dict(font=dict(size=11)))
+                        st.plotly_chart(fig_a, use_container_width=True)
+
+                st.markdown("---")
+
+                # 走勢對比圖
+                st.markdown("### 📈 歷史走勢對比（改造前 vs 改造後）")
+                common_idx = before_df.index.intersection(after_df.index)
+                if len(common_idx) > 10:
+                    before_cum = (1 + before_df.loc[common_idx].dot(before_w_arr)).cumprod()
+                    after_cum  = (1 + after_df.loc[common_idx].dot(after_w_arr)).cumprod()
+                    # 標準化至起點=100
+                    before_cum = before_cum / before_cum.iloc[0] * 100
+                    after_cum  = after_cum  / after_cum.iloc[0]  * 100
+
+                    fig_compare = go.Figure()
+                    fig_compare.add_trace(go.Scatter(
+                        x=before_cum.index, y=before_cum.values,
+                        name="🔴 改造前", line=dict(color="#c62828", width=2.5, dash="dash")
+                    ))
+                    fig_compare.add_trace(go.Scatter(
+                        x=after_cum.index, y=after_cum.values,
+                        name="🟢 改造後", line=dict(color="#1565c0", width=2.5)
+                    ))
+                    fig_compare.update_layout(
+                        yaxis_title="累積報酬（起始=100）",
+                        hovermode="x unified", height=380,
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02)
+                    )
+                    st.plotly_chart(fig_compare, use_container_width=True)
+
+                st.markdown("---")
+
+                # 效率前緣比較
+                st.markdown("### ☁️ 效率前緣：改造前後位置")
+                try:
+                    ef_vols_a, ef_rets_a = efficient_frontier(after_df)
+                    fig_ef_tr = go.Figure()
+                    fig_ef_tr.add_trace(go.Scatter(
+                        x=ef_vols_a, y=ef_rets_a, mode="lines",
+                        line=dict(color="#1565c0", width=2), name="改造後效率前緣"
+                    ))
+                    fig_ef_tr.add_trace(go.Scatter(
+                        x=[before_port_vol], y=[before_port_ret],
+                        mode="markers+text",
+                        text=["🔴 改造前"], textposition="top right",
+                        marker=dict(size=16, color="#c62828", symbol="circle"),
+                        name="改造前投組"
+                    ))
+                    fig_ef_tr.add_trace(go.Scatter(
+                        x=[after_port_vol], y=[after_port_ret],
+                        mode="markers+text",
+                        text=["🟢 改造後"], textposition="top right",
+                        marker=dict(size=16, color="#2e7d32", symbol="star"),
+                        name="改造後投組"
+                    ))
+                    fig_ef_tr.update_layout(
+                        xaxis_title="年化波動率", yaxis_title="年化報酬率",
+                        hovermode="closest", height=400,
+                        xaxis=dict(tickformat=".1%"), yaxis=dict(tickformat=".1%")
+                    )
+                    st.plotly_chart(fig_ef_tr, use_container_width=True)
+                except:
+                    pass
+
+                # 存入 session state 供後續使用
+                st.session_state["transform_result"] = {
+                    "before_labels": before_labels,
+                    "before_weights": before_w_arr,
+                    "after_labels":  after_labels,
+                    "after_weights": after_w_arr,
+                    "before_ret": before_port_ret, "before_vol": before_port_vol,
+                    "before_sharpe": before_port_sharpe, "before_mdd": before_port_mdd,
+                    "after_ret":  after_port_ret,  "after_vol":  after_port_vol,
+                    "after_sharpe":  after_port_sharpe,  "after_mdd":  after_port_mdd,
+                    "before_income": before_total_income, "after_income": after_total_income,
+                }
+
+            except Exception as e:
+                st.error(f"計算失敗：{e}")
+                import traceback
+                st.code(traceback.format_exc())
