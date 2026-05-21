@@ -1840,67 +1840,95 @@ with tab_transform:
 
     # ── Step 1：現有投組 ──
     st.markdown("### Step 1　輸入現有投組")
-    st.caption("請選擇客戶目前持有的標的，並輸入各自的持有比例（合計需為 100%）")
+    st.caption("分別選擇客戶目前持有的債券、基金、股票/ETF，並輸入各自的持有比例（合計需為 100%）")
 
-    if "transform_holdings" not in st.session_state:
-        st.session_state.transform_holdings = [{"label": "", "weight": 0.0}]
+    hold_col1, hold_col2, hold_col3 = st.columns(3)
 
-    # 建立所有可選標的清單
-    all_available = {}
-    for isin, info in BOND_DB.items():
-        if info.get("coupon") and info.get("maturity"):
-            display = f"{info['issuer']} {info['coupon']}% {info['maturity']}"
-            all_available[display] = {"type": "BOND", "isin": isin, "name": info["issuer"]}
-    for ticker, name in FUND_DB.items():
-        all_available[name] = {"type": "FUND", "ticker": ticker, "name": name}
+    # 債券選擇
+    with hold_col1:
+        st.markdown(f"**📎 債券（{len(BOND_DB)}檔）**")
+        bond_names_map = {
+            f"{v['issuer']} {v['coupon']}% {v['maturity']}": k
+            for k, v in BOND_DB.items()
+            if v.get("coupon") and v.get("maturity")
+        }
+        hold_bond_displays = st.multiselect(
+            "選擇持有債券", options=sorted(bond_names_map.keys()),
+            default=[], key="tr_hold_bonds"
+        )
 
-    all_display_options = sorted(all_available.keys())
+    # 基金選擇
+    with hold_col2:
+        st.markdown("**📊 基金（15檔）**")
+        hold_fund_tickers = st.multiselect(
+            "選擇持有基金", options=list(FUND_DB.keys()),
+            format_func=lambda x: FUND_DB[x],
+            default=[], key="tr_hold_funds"
+        )
 
-    # 現有持倉輸入區
-    holdings_valid = []
+    # 股票/ETF
+    with hold_col3:
+        st.markdown("**📈 股票/ETF**")
+        hold_etf_input = st.text_area(
+            "輸入代號（每行一個）",
+            placeholder="例如：\nSPY\nQQQ\nAAPL",
+            height=120, key="tr_hold_etf"
+        )
+        hold_etfs = [t.strip().upper() for t in hold_etf_input.replace(",", " ").split() if t.strip()]
+
+    # 組合所有現有持倉
+    all_holdings_display = (
+        hold_bond_displays +
+        [FUND_DB[t] for t in hold_fund_tickers] +
+        hold_etfs
+    )
+
+    # 輸入各標的比例
     total_weight_now = 0.0
+    holdings_valid = []
 
-    hold_cols = st.columns([4, 2, 1])
-    hold_cols[0].markdown("**標的**")
-    hold_cols[1].markdown("**持有比例 %**")
-    hold_cols[2].markdown("**移除**")
+    if all_holdings_display:
+        st.markdown("**各標的持有比例設定：**")
+        n_hold = len(all_holdings_display)
+        n_cols = min(n_hold, 4)
+        hold_w_cols = st.columns(n_cols)
+        for idx, display in enumerate(all_holdings_display):
+            with hold_w_cols[idx % n_cols]:
+                short = display[:14] + ("…" if len(display) > 14 else "")
+                w = st.number_input(
+                    f"{short} %",
+                    min_value=0.0, max_value=100.0, value=0.0, step=1.0,
+                    key=f"tr_hold_w_{idx}"
+                )
+                total_weight_now += w
 
-    to_remove = []
-    for idx, holding in enumerate(st.session_state.transform_holdings):
-        c1, c2, c3 = st.columns([4, 2, 1])
-        with c1:
-            sel = st.selectbox(
-                f"現有標的 {idx+1}",
-                options=["（請選擇）"] + all_display_options,
-                key=f"tr_hold_sel_{idx}",
-                label_visibility="collapsed"
-            )
-        with c2:
-            w = st.number_input(
-                f"比例 {idx+1}",
-                min_value=0.0, max_value=100.0, value=0.0, step=1.0,
-                key=f"tr_hold_w_{idx}",
-                label_visibility="collapsed"
-            )
-        with c3:
-            if st.button("✕", key=f"tr_hold_rm_{idx}", help="移除此標的"):
-                to_remove.append(idx)
-        if sel != "（請選擇）" and w > 0:
-            holdings_valid.append({"display": sel, "weight": w / 100, **all_available[sel]})
-            total_weight_now += w
+                # 組成資產資訊
+                if display in bond_names_map:
+                    isin = bond_names_map[display]
+                    if w > 0:
+                        holdings_valid.append({
+                            "type": "BOND", "isin": isin,
+                            "name": BOND_DB[isin]["issuer"],
+                            "display": display, "weight": w / 100
+                        })
+                elif display in FUND_DB.values():
+                    ticker = next(k for k, v in FUND_DB.items() if v == display)
+                    if w > 0:
+                        holdings_valid.append({
+                            "type": "FUND", "ticker": ticker,
+                            "name": display, "display": display, "weight": w / 100
+                        })
+                else:
+                    if w > 0:
+                        holdings_valid.append({
+                            "type": "ETF", "name": display,
+                            "display": display, "weight": w / 100
+                        })
 
-    for idx in reversed(to_remove):
-        st.session_state.transform_holdings.pop(idx)
-        st.rerun()
-
-    col_add, col_total = st.columns([2, 2])
-    with col_add:
-        if st.button("➕ 新增標的", key="tr_add_holding"):
-            st.session_state.transform_holdings.append({"label": "", "weight": 0.0})
-            st.rerun()
-    with col_total:
-        weight_color = "🟢" if abs(total_weight_now - 100) < 0.1 else "🔴"
+        weight_color = "🟢" if abs(total_weight_now - 100) < 0.5 else "🔴"
         st.markdown(f"**合計：{weight_color} {total_weight_now:.1f}%**（需為 100%）")
+    else:
+        st.info("👆 請在上方選擇現有持有的標的")
 
     st.markdown("---")
 
