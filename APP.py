@@ -1000,6 +1000,82 @@ if st.session_state.result_ready:
         | **99%（2.326σ）** | {var_99:.2%} | {port_ret + 2.326*port_vol:.2%} | 約 1/100 機率超出此範圍 |
         """)
         st.caption("※ 基於常態分配假設，實際分佈可能有厚尾風險")
+
+        # ── 白話解讀 ──
+        with st.expander("📖 白話解讀（點擊展開）", expanded=True):
+            # 報酬評語
+            if port_ret >= 0.20:
+                ret_comment = f"✨ **非常亮眼**！年化報酬 {port_ret:.1%}，表現相當強勁。"
+            elif port_ret >= 0.12:
+                ret_comment = f"👍 **表現不錯**，年化報酬 {port_ret:.1%}，高於一般股債混合基金平均水準。"
+            elif port_ret >= 0.06:
+                ret_comment = f"📈 **穩健成長**，年化報酬 {port_ret:.1%}，適合穩健型投資人。"
+            else:
+                ret_comment = f"⚠️ 年化報酬 {port_ret:.1%}，偏低，建議檢視標的組合。"
+
+            # 波動評語
+            if port_vol <= 0.05:
+                vol_comment = f"🛡️ 波動率僅 {port_vol:.1%}，**非常穩定**，適合保守型投資人。"
+            elif port_vol <= 0.10:
+                vol_comment = f"⚖️ 波動率 {port_vol:.1%}，**中等波動**，一般投資人都能接受。"
+            elif port_vol <= 0.15:
+                vol_comment = f"📊 波動率 {port_vol:.1%}，**偏高**，需要有一定風險承受能力。"
+            else:
+                vol_comment = f"⚡ 波動率 {port_vol:.1%}，**高波動**，適合積極型投資人。"
+
+            # 夏普評語
+            if port_sharpe >= 2.0:
+                sharpe_comment = f"🏆 夏普比率 {port_sharpe:.2f}，**卓越**！每承擔1單位風險可獲得超過2單位報酬，效率極高。"
+            elif port_sharpe >= 1.0:
+                sharpe_comment = f"🌟 夏普比率 {port_sharpe:.2f}，**優秀**！每承擔1單位風險可獲得約{port_sharpe:.1f}單位報酬，效率良好。"
+            elif port_sharpe >= 0.5:
+                sharpe_comment = f"👌 夏普比率 {port_sharpe:.2f}，**尚可**，風險報酬比處於一般水準。"
+            else:
+                sharpe_comment = f"⚠️ 夏普比率 {port_sharpe:.2f}，**偏低**，承擔的風險未得到足夠補償。"
+
+            # MDD評語
+            if port_mdd is not None:
+                mdd_abs = abs(port_mdd)
+                if mdd_abs <= 0.05:
+                    mdd_comment = f"🛡️ 最大回撤僅 {port_mdd:.1%}，**控制極佳**，幾乎沒有大幅虧損的風險。"
+                elif mdd_abs <= 0.15:
+                    mdd_comment = f"✅ 最大回撤 {port_mdd:.1%}，**控制良好**，即使遇到市場動盪也不至於大幅虧損。"
+                elif mdd_abs <= 0.25:
+                    mdd_comment = f"⚠️ 最大回撤 {port_mdd:.1%}，**中等**，市場下跌時需有心理準備。"
+                else:
+                    mdd_comment = f"❗ 最大回撤 {port_mdd:.1%}，**偏大**，高風險期間可能承受較大虧損。"
+            else:
+                mdd_comment = ""
+
+            # 信賴區間白話
+            ci_comment = (
+                f"根據歷史資料，**有95%的機率**年報酬落在 "
+                f"**{var_95:.1%} ～ {port_ret + 1.645*port_vol:.1%}** 之間。"
+                f"換句話說，遇到極端情況（約1/20的年份）才會低於 {var_95:.1%}。"
+            )
+
+            # 整體評價
+            if port_sharpe >= 1.0 and mdd_abs <= 0.15 if port_mdd is not None else True:
+                overall = "🎯 **整體評價：優良組合**，報酬與風險的平衡控制得宜，適合作為核心配置。"
+            elif port_sharpe >= 0.5:
+                overall = "📋 **整體評價：合格組合**，可考慮調整部分標的以提升效率。"
+            else:
+                overall = "🔍 **整體評價：建議優化**，可嘗試調整策略或標的組合。"
+
+            st.markdown(f"""
+**📊 報酬**：{ret_comment}
+
+**📉 波動**：{vol_comment}
+
+**⚖️ 效率（夏普比率）**：{sharpe_comment}
+
+**🔻 最大回撤**：{mdd_comment}
+
+**🎯 報酬區間**：{ci_comment}
+
+---
+{overall}
+""")
         st.markdown("---")
 
         left_col, right_col = st.columns([3, 2])
