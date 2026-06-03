@@ -10,3 +10,4 @@ requests
 reportlab
 pypdf
 matplotlib
+anthropic
