@@ -788,12 +788,14 @@ period_options = {"1年": 1, "2年": 2, "3年": 3, "4年": 4, "5年": 5}
 period_label = st.sidebar.radio("選擇回測期間", list(period_options.keys()), horizontal=True)
 years = period_options[period_label]
 st.sidebar.header("2. 優化目標")
-method_map = {"最大夏普比率": "max_sharpe", "最小風險": "min_vol", "鎖定目標報酬": "target_return"}
+method_map = {"最大夏普比率": "max_sharpe", "最小風險": "min_vol", "鎖定目標報酬": "target_return", "自訂金額配置": "custom"}
 method_label = st.sidebar.radio("選擇策略", list(method_map.keys()))
 method = method_map[method_label]
 target_return = 0.08
 if method == "target_return":
     target_return = st.sidebar.slider("目標年化報酬率 %", 1.0, 30.0, 8.0, 0.5) / 100
+if method == "custom":
+    st.sidebar.info("💡 請在「標的選擇」分頁選好標的後，於下方輸入各標的投資金額。")
 
 st.sidebar.header("3. 最大回撤限制")
 mdd_limit_pct = st.sidebar.slider(
@@ -835,6 +837,48 @@ with tab_select:
         st.warning("請至少選擇 2 個標的！")
     else:
         st.success(f"已選擇 {total_selected} 個標的（債券 {len(selected_bonds)} + 基金 {len(selected_funds)} + 股票/ETF {len(extra_tickers)}）")
+
+    # ★ 自訂金額配置輸入區
+    custom_amounts = {}
+    custom_total_principal = 0.0
+    if method == "custom" and total_selected >= 2:
+        st.markdown("---")
+        st.markdown("### 💰 自訂金額配置")
+        st.caption("請輸入每個標的的投資金額（台幣），系統會自動計算比例並驗證加總。")
+
+        all_selected_labels = (
+            [BOND_DB[isin]["issuer"] for isin in selected_bonds] +
+            [FUND_DB[t] for t in selected_funds] +
+            extra_tickers
+        )
+        custom_total_principal = st.number_input(
+            "總投資金額（台幣）", min_value=100000, max_value=500000000,
+            value=10000000, step=100000, format="%d", key="custom_principal"
+        )
+        n_custom = len(all_selected_labels)
+        custom_cols = st.columns(min(n_custom, 4))
+        custom_sum = 0.0
+        for idx, lbl in enumerate(all_selected_labels):
+            with custom_cols[idx % min(n_custom, 4)]:
+                short = lbl[:14] + ("…" if len(lbl) > 14 else "")
+                amt = st.number_input(
+                    f"{short}",
+                    min_value=0, max_value=500000000,
+                    value=0, step=100000, format="%d",
+                    key=f"custom_amt_{idx}"
+                )
+                custom_amounts[lbl] = amt
+                custom_sum += amt
+
+        # 防呆：加總檢查
+        diff = abs(custom_sum - custom_total_principal)
+        if custom_sum == 0:
+            st.info("👆 請輸入各標的的投資金額")
+        elif diff > custom_total_principal * 0.005:  # 允許 0.5% 誤差
+            st.error(f"❌ 金額加總 NT${custom_sum:,.0f} ≠ 總金額 NT${custom_total_principal:,.0f}，差異 NT${custom_sum - custom_total_principal:+,.0f}，請調整！")
+        else:
+            st.success(f"✅ 金額加總 NT${custom_sum:,.0f}，驗證通過！")
+
     run_btn = st.button("🚀 開始計算最適組合", type="primary", use_container_width=True, disabled=(total_selected < 2))
 
 # ==========================================
@@ -942,7 +986,16 @@ if run_btn and total_selected >= 2:
                 st.stop()
 
             ann_ret, ann_vol, sharpe_r = calc_stats(returns_df)
-            weights = run_optimization(returns_df, method=method, target_return=target_return, mdd_limit=mdd_limit)
+
+            # ★ 自訂金額模式：直接用輸入金額計算比例，不做數學優化
+            if method == "custom" and custom_amounts:
+                total_amt = sum(custom_amounts.get(lbl, 0) for lbl in labels)
+                if total_amt > 0:
+                    weights = np.array([custom_amounts.get(lbl, 0) / total_amt for lbl in labels])
+                else:
+                    weights = run_optimization(returns_df, method="max_sharpe", target_return=target_return, mdd_limit=mdd_limit)
+            else:
+                weights = run_optimization(returns_df, method=method, target_return=target_return, mdd_limit=mdd_limit)
             cov = returns_df.cov() * 252
             # 組合年化報酬：用實際組合日報酬序列算年度平均
             port_daily_ret = returns_df.dot(weights)
@@ -1185,6 +1238,73 @@ if st.session_state.result_ready:
         fig_corr = go.Figure(go.Heatmap(z=corr.values, x=[l[:10] for l in corr.columns.tolist()], y=[l[:10] for l in corr.index.tolist()], colorscale="RdYlGn", zmin=-1, zmax=1, text=np.round(corr.values, 2), texttemplate="%{text}", textfont={"size": 9}))
         fig_corr.update_layout(height=420, margin=dict(l=20, r=20, t=20, b=20))
         st.plotly_chart(fig_corr, use_container_width=True)
+        st.markdown("---")
+
+        # ★ 年度報酬長條圖（仿 FinLab 風格）
+        st.markdown("**📅 年度報酬比較**")
+        price_df = (1 + returns_df).cumprod()
+        port_price = (1 + returns_df.dot(weights)).cumprod()
+
+        # 計算各年度報酬
+        annual_port = price_df.resample("YE").last().pct_change().dropna()
+        annual_port_ret = port_price.resample("YE").last().pct_change().dropna()
+
+        # 過濾掉當年度（資料不完整）
+        curr_year = datetime.now().year
+        annual_port     = annual_port[annual_port.index.year != curr_year]
+        annual_port_ret = annual_port_ret[annual_port_ret.index.year != curr_year]
+
+        if len(annual_port_ret) > 0:
+            years_list = [str(y) for y in annual_port_ret.index.year]
+            port_vals  = annual_port_ret.values * 100
+
+            fig_annual = go.Figure()
+            # 投資組合長條
+            bar_colors = ["#1565c0" if v >= 0 else "#c62828" for v in port_vals]
+            fig_annual.add_trace(go.Bar(
+                x=years_list, y=port_vals,
+                name="📐 投資組合",
+                marker_color=bar_colors,
+                text=[f"{v:+.1f}%" for v in port_vals],
+                textposition="outside",
+                textfont=dict(size=11, color=bar_colors),
+            ))
+
+            # 各標的折線（最多顯示前3個）
+            line_colors = ["#ff9800", "#2e7d32", "#9c27b0", "#00838f"]
+            for i, lbl in enumerate(labels[:4]):
+                if lbl in annual_port.columns:
+                    lbl_vals = annual_port[lbl].values * 100
+                    fig_annual.add_trace(go.Scatter(
+                        x=years_list, y=lbl_vals,
+                        name=lbl[:12],
+                        mode="lines+markers",
+                        line=dict(color=line_colors[i % len(line_colors)], width=2, dash="dot"),
+                        marker=dict(size=6),
+                    ))
+
+            fig_annual.add_hline(y=0, line_color="#888", line_width=1)
+            fig_annual.update_layout(
+                yaxis_title="年度報酬率 (%)",
+                hovermode="x unified",
+                height=380,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02),
+                bargap=0.3,
+                yaxis=dict(ticksuffix="%"),
+            )
+            st.plotly_chart(fig_annual, use_container_width=True)
+
+            # 年度數字摘要（仿 FinLab 底部列）
+            ann_summary_cols = st.columns(len(years_list))
+            for ci, (yr, val) in enumerate(zip(years_list, port_vals)):
+                color = "#1565c0" if val >= 0 else "#c62828"
+                ann_summary_cols[ci].markdown(
+                    f"<div style='text-align:center'>"
+                    f"<div style='font-size:0.8rem;color:#888'>{yr}</div>"
+                    f"<div style='font-size:1rem;font-weight:700;color:{color}'>{val:+.1f}%</div>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
         st.markdown("---")
 
         with st.expander("🔍 資料明細（點擊展開）"):
