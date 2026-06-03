@@ -19,6 +19,62 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 import io
 import os
+import anthropic as _anthropic
+
+# ==========================================
+# AI 白話解讀生成
+# ==========================================
+def generate_ai_commentary(port_ret, port_vol, port_sharpe, port_mdd,
+                            labels, weights, ann_ret, ann_vol, sharpe_r,
+                            method_label, period_label, annual_returns=None):
+    """呼叫 Claude API 生成投組白話解讀，失敗時回傳備用文字"""
+    try:
+        api_key = st.secrets.get("ANTHROPIC_API_KEY", os.getenv("ANTHROPIC_API_KEY", ""))
+        if not api_key:
+            return None
+        client = _anthropic.Anthropic(api_key=api_key)
+
+        # 整理標的資訊
+        asset_lines = []
+        for i, (lbl, w) in enumerate(zip(labels, weights)):
+            if w > 0.001 and i < len(ann_ret):
+                asset_lines.append(
+                    f"  - {lbl[:14]}：配置 {w:.1%}，年化報酬 {float(ann_ret.iloc[i]):.1%}，"
+                    f"波動 {float(ann_vol.iloc[i]):.1%}，夏普 {float(sharpe_r.iloc[i]):.2f}"
+                )
+
+        # 年度報酬資訊
+        annual_lines = ""
+        if annual_returns:
+            annual_lines = "\n年度報酬：" + "、".join(
+                [f"{yr}年 {val:+.1f}%" for yr, val in annual_returns.items()]
+            )
+
+        prompt = f"""你是一位專業的財富管理顧問，請用繁體中文白話解讀以下投資組合的回測結果，
+語氣專業但易懂，適合給一般投資人看，約150-200字，分三段：
+1. 整體評價（報酬與風險概述）
+2. 核心亮點（夏普比率、MDD 等關鍵指標白話說明）
+3. 注意事項（給投資人的建議）
+
+投組資訊：
+- 策略：{method_label}，回測期間：{period_label}
+- 年化報酬：{port_ret:.2%}，年化波動：{port_vol:.2%}
+- 夏普比率：{port_sharpe:.2f}，最大回撤：{port_mdd:.2%}
+- 標的配置：
+{chr(10).join(asset_lines)}
+{annual_lines}
+
+請直接輸出三段文字，不要加標題編號。"""
+
+        resp = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=400,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return resp.content[0].text.strip()
+    except Exception as e:
+        print(f"[AI commentary] 生成失敗：{e}")
+        return None
 
 st.set_page_config(page_title="最適投資組合優化器", layout="wide", page_icon="📐")
 
@@ -504,7 +560,7 @@ def get_chinese_font():
     except:
         return "Helvetica"
 
-def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret, port_vol, port_sharpe, method_name, period_label):
+def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret, port_vol, port_sharpe, method_name, period_label, commentary=None):
     buf = io.BytesIO()
     font = get_chinese_font()
     NAVY = colors.HexColor("#1a2744")
@@ -527,6 +583,29 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
     title_tbl.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,-1),NAVY),("TOPPADDING",(0,0),(-1,-1),16),("BOTTOMPADDING",(0,0),(-1,-1),16)]))
     story.append(title_tbl)
     story.append(Spacer(1, 0.5*cm))
+
+    # ── AI 白話解讀（如有）──
+    if commentary:
+        ai_style = ParagraphStyle(
+            "ai", fontName=font, fontSize=9.5,
+            textColor=colors.HexColor("#1a2744"),
+            backColor=colors.HexColor("#f0f4ff"),
+            borderPadding=10, spaceBefore=0, spaceAfter=0,
+            leading=18
+        )
+        ai_title_style = ParagraphStyle(
+            "ait", fontName=font, fontSize=11,
+            textColor=colors.HexColor("#1a2744"), spaceAfter=4
+        )
+        story.append(Paragraph("🤖  AI 投組白話解讀", ai_title_style))
+        story.append(HRFlowable(width="100%", thickness=1.5,
+                                color=colors.HexColor("#c8a84b"), spaceAfter=6))
+        for para in commentary.split("\n\n"):
+            para = para.strip()
+            if para:
+                story.append(Paragraph(para.replace("\n", "<br/>"), ai_style))
+                story.append(Spacer(1, 0.15*cm))
+        story.append(Spacer(1, 0.3*cm))
 
     # ── 一、建議配置權重（含MDD，表格二，移除重複的表格一）──
     story.append(Paragraph("一、建議配置與績效統計", h2_s))
@@ -1551,7 +1630,25 @@ if st.session_state.result_ready:
         st.markdown("---")
         if st.button("🖨️ 生成 PDF 報告", type="primary"):
             with st.spinner("生成中..."):
-                pdf_buf = generate_pdf(weights, labels, ann_ret, ann_vol, sharpe_r, returns_df, port_ret, port_vol, port_sharpe, st.session_state.method_label, st.session_state.period_label)
+                # 計算年度報酬供 AI 解讀用
+                port_daily_for_ai = returns_df.dot(weights)
+                annual_rets_for_ai = {}
+                for yr, grp in port_daily_for_ai.groupby(port_daily_for_ai.index.year):
+                    if yr != datetime.now().year and len(grp) >= 20:
+                        annual_rets_for_ai[str(yr)] = ((1 + grp).prod() - 1) * 100
+
+                # 生成 AI 白話解讀
+                with st.spinner("🤖 AI 正在撰寫白話解讀..."):
+                    commentary = generate_ai_commentary(
+                        port_ret, port_vol, port_sharpe,
+                        port_mdd if port_mdd is not None else 0,
+                        labels, weights, ann_ret, ann_vol, sharpe_r,
+                        st.session_state.method_label,
+                        st.session_state.period_label,
+                        annual_returns=annual_rets_for_ai
+                    )
+
+                pdf_buf = generate_pdf(weights, labels, ann_ret, ann_vol, sharpe_r, returns_df, port_ret, port_vol, port_sharpe, st.session_state.method_label, st.session_state.period_label, commentary=commentary)
                 st.download_button("📥 下載 PDF 報告", data=pdf_buf, file_name=f"最適組合_{datetime.today().strftime('%Y%m%d')}.pdf", mime="application/pdf", use_container_width=True)
 
         # ==========================================
@@ -1731,6 +1828,24 @@ if st.session_state.result_ready:
                             },
                             "disclaimer": "本報告所有數據均基於歷史資料計算，不代表未來績效。配息金額以各機構實際公告為準。本報告僅供內部教育訓練使用，請勿外流。",
                         }
+
+                        # ── 生成 AI 白話解讀並加入 PPT payload ──
+                        ppt_annual_rets = {}
+                        port_d = returns_df.dot(weights)
+                        for yr, grp in port_d.groupby(port_d.index.year):
+                            if yr != datetime.now().year and len(grp) >= 20:
+                                ppt_annual_rets[str(yr)] = ((1 + grp).prod() - 1) * 100
+
+                        ppt_commentary = generate_ai_commentary(
+                            port_ret, port_vol, port_sharpe,
+                            port_mdd if port_mdd is not None else 0,
+                            labels, weights, ann_ret, ann_vol, sharpe_r,
+                            st.session_state.method_label,
+                            st.session_state.period_label,
+                            annual_returns=ppt_annual_rets
+                        )
+                        if ppt_commentary:
+                            ppt_payload["ai_commentary"] = ppt_commentary
 
                         # ── 呼叫 eln-bot /generate-ppt API ──
                         ELN_BOT_URL = "https://eln-bot.onrender.com/generate-ppt"
