@@ -527,50 +527,37 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
     title_tbl.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,-1),NAVY),("TOPPADDING",(0,0),(-1,-1),16),("BOTTOMPADDING",(0,0),(-1,-1),16)]))
     story.append(title_tbl)
     story.append(Spacer(1, 0.5*cm))
-    story.append(Paragraph("一、整體組合預期績效", h2_s))
+
+    # ── 一、建議配置權重（含MDD，表格二，移除重複的表格一）──
+    story.append(Paragraph("一、建議配置與績效統計", h2_s))
     story.append(HRFlowable(width="100%", thickness=2, color=GOLD, spaceAfter=8))
+
+    # 整體組合 KPI 單行摘要
     var_68 = port_ret - port_vol
     var_95 = port_ret - 1.645 * port_vol
     var_99 = port_ret - 2.326 * port_vol
-    kpi_data = [
-        ["指標", "數值", "說明"],
-        ["年化報酬率", f"{port_ret:.2%}", "歷史加權平均年化報酬"],
-        ["年化波動率", f"{port_vol:.2%}", "報酬率標準差年化"],
-        ["夏普比率",   f"{port_sharpe:.2f}", f"(報酬 - 無風險利率{RISK_FREE_RATE:.0%}) / 波動"],
-        ["68% 信賴區間", f"{var_68:.2%} ～ {port_ret + port_vol:.2%}", "約有 68% 機率年報酬落在此區間（1σ）"],
-        ["95% 信賴區間", f"{var_95:.2%} ～ {port_ret + 1.645*port_vol:.2%}", "約有 95% 機率年報酬落在此區間（1.645σ）"],
-        ["99% 信賴區間", f"{var_99:.2%} ～ {port_ret + 2.326*port_vol:.2%}", "約有 99% 機率年報酬落在此區間（2.326σ）"],
+    kpi_summary = [
+        ["年化報酬率", "年化波動率", "夏普比率", "最大回撤", "68%信賴區間", "95%信賴區間"],
+        [f"{port_ret:.2%}", f"{port_vol:.2%}", f"{port_sharpe:.2f}",
+         f"{float(calc_portfolio_drawdown(returns_df, weights)):.2%}" if hasattr(returns_df, 'dot') else "-",
+         f"{var_68:.2%}～{port_ret+port_vol:.2%}",
+         f"{var_95:.2%}～{port_ret+1.645*port_vol:.2%}"],
     ]
-    kpi_tbl = Table(kpi_data, colWidths=[4*cm, 4.5*cm, 8.5*cm])
-    kpi_tbl.setStyle(TableStyle([
+    kpi_sum_tbl = Table(kpi_summary, colWidths=[2.8*cm, 2.8*cm, 2.2*cm, 2.2*cm, 3.5*cm, 3.5*cm])
+    kpi_sum_tbl.setStyle(TableStyle([
         ("BACKGROUND",(0,0),(-1,0),NAVY),("TEXTCOLOR",(0,0),(-1,0),WHITE),
-        ("FONTNAME",(0,0),(-1,-1),font),("FONTSIZE",(0,0),(-1,-1),8.5),
-        ("ALIGN",(0,0),(-1,-1),"CENTER"),("ROWBACKGROUNDS",(0,1),(-1,-1),[BG,WHITE]),
+        ("BACKGROUND",(0,1),(-1,1),BG),
+        ("FONTNAME",(0,0),(-1,-1),font),("FONTSIZE",(0,0),(-1,-1),8),
+        ("ALIGN",(0,0),(-1,-1),"CENTER"),
         ("GRID",(0,0),(-1,-1),0.3,colors.HexColor("#dddddd")),
         ("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5),
-        ("TEXTCOLOR",(1,4),(1,6),RED),
     ]))
-    story.append(kpi_tbl)
+    story.append(kpi_sum_tbl)
     story.append(Spacer(1, 0.3*cm))
     story.append(Paragraph("※ 信賴區間基於常態分配假設計算，實際報酬分佈可能有厚尾風險，請審慎參考。", small_s))
-    story.append(Spacer(1, 0.4*cm))
-    story.append(Paragraph("二、建議配置權重", h2_s))
-    story.append(HRFlowable(width="100%", thickness=2, color=GOLD, spaceAfter=8))
-    w_data = [["標的", "配置比例", "年化報酬", "年化波動", "夏普比率"]]
-    for i, (lbl, w) in enumerate(zip(labels, weights)):
-        if w > 0.001:
-            w_data.append([lbl, f"{w:.1%}", f"{ann_ret.iloc[i]:.2%}", f"{ann_vol.iloc[i]:.2%}", f"{sharpe.iloc[i]:.2f}"])
-    w_tbl = Table(w_data, colWidths=[6.5*cm, 2.2*cm, 2.5*cm, 2.5*cm, 2.3*cm])
-    w_tbl.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),NAVY),("TEXTCOLOR",(0,0),(-1,0),WHITE),
-        ("FONTNAME",(0,0),(-1,-1),font),("FONTSIZE",(0,0),(-1,-1),8.5),
-        ("ALIGN",(0,0),(-1,-1),"CENTER"),("ROWBACKGROUNDS",(0,1),(-1,-1),[BG,WHITE]),
-        ("GRID",(0,0),(-1,-1),0.3,colors.HexColor("#dddddd")),
-        ("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5),
-    ]))
-    story.append(w_tbl)
     story.append(Spacer(1, 0.3*cm))
-    # 各標的完整統計（含MDD）
+
+    # 各標的完整統計（含MDD，只保留這一張表）
     stats_hdr = ["標的", "建議配置", "年化報酬", "年化波動", "夏普比率", "最大回撤"]
     stats_rows = [stats_hdr]
     for i, lbl in enumerate(labels):
@@ -580,14 +567,12 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
             cum = (1 + returns_df[lbl]).cumprod()
             peak = cum.cummax()
             mdd_val = f"{((cum - peak) / peak).min():.2%}"
-        # 配置0%用灰色標示
         stats_rows.append([
             lbl[:14], f"{w_i:.1%}",
             f"{ann_ret.iloc[i]:.2%}", f"{ann_vol.iloc[i]:.2%}",
             f"{sharpe.iloc[i]:.2f}", mdd_val
         ])
     stats_tbl = Table(stats_rows, colWidths=[5.5*cm, 2*cm, 2.2*cm, 2.2*cm, 2*cm, 2.1*cm])
-    # 0%配置的行用灰色標示
     stats_style = [
         ("BACKGROUND",(0,0),(-1,0),NAVY),("TEXTCOLOR",(0,0),(-1,0),WHITE),
         ("FONTNAME",(0,0),(-1,-1),font),("FONTSIZE",(0,0),(-1,-1),8),
@@ -602,6 +587,51 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
     ]))
     story.append(stats_tbl)
     story.append(Spacer(1, 0.4*cm))
+
+    # ── 二、年度報酬回顧 ──
+    story.append(Paragraph("二、年度報酬回顧", h2_s))
+    story.append(HRFlowable(width="100%", thickness=2, color=GOLD, spaceAfter=8))
+    port_daily_pdf = returns_df.dot(weights)
+    annual_rows_pdf = {}
+    for yr, grp in port_daily_pdf.groupby(port_daily_pdf.index.year):
+        if yr == datetime.now().year or len(grp) < 20:
+            continue
+        annual_rows_pdf[str(yr)] = (1 + grp).prod() - 1
+    if annual_rows_pdf:
+        ann_hdr = ["年度", "投資組合"] + [lbl[:8] for lbl in labels[:5]]
+        ann_pdf_rows = [ann_hdr]
+        for yr_str in sorted(annual_rows_pdf.keys()):
+            row = [yr_str, f"{annual_rows_pdf[yr_str]:.2%}"]
+            for lbl in labels[:5]:
+                if lbl in returns_df.columns:
+                    yr_grp = returns_df[lbl][returns_df[lbl].index.year == int(yr_str)]
+                    row.append(f"{(1+yr_grp).prod()-1:.2%}" if len(yr_grp) >= 20 else "-")
+                else:
+                    row.append("-")
+            ann_pdf_rows.append(row)
+        n_ann_cols = len(ann_hdr)
+        ann_tbl = Table(ann_pdf_rows, colWidths=[17*cm/n_ann_cols]*n_ann_cols)
+        ann_style = [
+            ("BACKGROUND",(0,0),(-1,0),NAVY),("TEXTCOLOR",(0,0),(-1,0),WHITE),
+            ("FONTNAME",(0,0),(-1,-1),font),("FONTSIZE",(0,0),(-1,-1),8),
+            ("ALIGN",(0,0),(-1,-1),"CENTER"),("ROWBACKGROUNDS",(0,1),(-1,-1),[BG,WHITE]),
+            ("GRID",(0,0),(-1,-1),0.3,colors.HexColor("#dddddd")),
+            ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
+        ]
+        # 投組正報酬綠色、負報酬紅色
+        for ri in range(1, len(ann_pdf_rows)):
+            try:
+                v = float(ann_pdf_rows[ri][1].replace("%","")) / 100
+                c = colors.HexColor("#c8e6c9") if v >= 0 else colors.HexColor("#ffcdd2")
+                ann_style.append(("BACKGROUND",(1,ri),(1,ri),c))
+            except: pass
+        ann_tbl.setStyle(TableStyle(ann_style))
+        story.append(ann_tbl)
+        story.append(Spacer(1, 0.3*cm))
+    else:
+        story.append(Paragraph("※ 回測期間不足一年，無完整年度資料。", small_s))
+        story.append(Spacer(1, 0.3*cm))
+
     story.append(Paragraph("三、相關係數矩陣", h2_s))
     story.append(HRFlowable(width="100%", thickness=2, color=GOLD, spaceAfter=8))
     corr = returns_df.corr()
@@ -1519,7 +1549,7 @@ if st.session_state.result_ready:
             st.session_state["avg_yield_cf"] = avg_yield_cf
 
         st.markdown("---")
-        if st.button("🖨️ 生成 PDF 報告（密碼保護）", type="primary"):
+        if st.button("🖨️ 生成 PDF 報告", type="primary"):
             with st.spinner("生成中..."):
                 pdf_buf = generate_pdf(weights, labels, ann_ret, ann_vol, sharpe_r, returns_df, port_ret, port_vol, port_sharpe, st.session_state.method_label, st.session_state.period_label)
                 st.download_button("📥 下載 PDF 報告", data=pdf_buf, file_name=f"最適組合_{datetime.today().strftime('%Y%m%d')}.pdf", mime="application/pdf", use_container_width=True)
@@ -1537,7 +1567,7 @@ if st.session_state.result_ready:
                 ppt_client  = st.text_input("客戶姓名", value="", placeholder="例：王大明", key="ppt_client")
                 ppt_amount  = st.text_input("投資金額", value="NT$10,000,000", placeholder="例：NT$10,000,000", key="ppt_amount")
             with ppt_col2:
-                ppt_goal    = st.text_input("策略目標", value=f"{st.session_state.method_label}（夏普 {port_sharpe:.2f}）", key="ppt_goal")
+                ppt_goal    = st.text_input("策略目標", value=f"{st.session_state.method_label}（夏普 {st.session_state.port_sharpe:.2f}）", key=f"ppt_goal_{st.session_state.port_sharpe:.2f}")
                 ppt_date    = st.date_input("製作日期", value=datetime.today(), key="ppt_date")
 
         if st.button("🪄 生成客戶建議書 PPT", type="primary", use_container_width=True, key="gen_ppt_btn"):
