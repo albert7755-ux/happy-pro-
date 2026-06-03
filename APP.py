@@ -51,10 +51,12 @@ def generate_ai_commentary(port_ret, port_vol, port_sharpe, port_mdd,
             )
 
         prompt = f"""你是一位專業的財富管理顧問，請用繁體中文白話解讀以下投資組合的回測結果，
-語氣專業但易懂，適合給一般投資人看，約150-200字，分三段：
-1. 整體評價（報酬與風險概述）
-2. 核心亮點（夏普比率、MDD 等關鍵指標白話說明）
-3. 注意事項（給投資人的建議）
+語氣專業但易懂，適合給一般投資人看，約120-150字，分兩段：
+1. 整體評價（報酬與風險概述，正面積極語氣）
+2. 核心亮點（夏普比率、MDD、年度表現等關鍵指標的白話說明，突出優勢）
+
+請只寫正面的分析，不要寫風險提示或注意事項。
+請直接輸出兩段文字，不要加標題編號。
 
 投組資訊：
 - 策略：{method_label}，回測期間：{period_label}
@@ -62,9 +64,7 @@ def generate_ai_commentary(port_ret, port_vol, port_sharpe, port_mdd,
 - 夏普比率：{port_sharpe:.2f}，最大回撤：{port_mdd:.2%}
 - 標的配置：
 {chr(10).join(asset_lines)}
-{annual_lines}
-
-請直接輸出三段文字，不要加標題編號。"""
+{annual_lines}"""
 
         resp = client.messages.create(
             model="claude-sonnet-4-20250514",
@@ -597,7 +597,7 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
             "ait", fontName=font, fontSize=11,
             textColor=colors.HexColor("#1a2744"), spaceAfter=4
         )
-        story.append(Paragraph("🤖  AI 投組白話解讀", ai_title_style))
+        story.append(Paragraph("⏱  30秒投資組合解讀", ai_title_style))
         story.append(HRFlowable(width="100%", thickness=1.5,
                                 color=colors.HexColor("#c8a84b"), spaceAfter=6))
         for para in commentary.split("\n\n"):
@@ -605,6 +605,16 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
             if para:
                 story.append(Paragraph(para.replace("\n", "<br/>"), ai_style))
                 story.append(Spacer(1, 0.15*cm))
+        # 固定警語
+        disclaimer_style = ParagraphStyle(
+            "disc", fontName=font, fontSize=8,
+            textColor=colors.HexColor("#888888"),
+            spaceBefore=4, spaceAfter=0
+        )
+        story.append(Paragraph(
+            "⚠️ 過往績效不保證未來表現，投資前請審慎評估自身風險承受度。",
+            disclaimer_style
+        ))
         story.append(Spacer(1, 0.3*cm))
 
     # ── 一、建議配置權重（含MDD，表格二，移除重複的表格一）──
