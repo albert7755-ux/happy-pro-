@@ -1681,8 +1681,115 @@ if st.session_state.result_ready:
             if not ppt_client.strip():
                 st.warning("請填寫客戶姓名！")
             else:
-                with st.spinner("正在生成投影片，請稍候（約 10～20 秒）..."):
+                with st.spinner("正在生成投影片，請稍候（約 20～40 秒）..."):
                     try:
+                        # ── Step A：在 Streamlit 生成市場背景 ──
+                        with st.spinner("🌏 生成市場背景..."):
+                            try:
+                                api_key = st.secrets.get("ANTHROPIC_API_KEY", "")
+                                _cl = _anthropic.Anthropic(api_key=api_key)
+                                mkt_resp = _cl.messages.create(
+                                    model="claude-sonnet-4-20250514", max_tokens=500,
+                                    messages=[{"role": "user", "content":
+                                        "請根據目前最新的全球市場環境（2025-2026年），為一份台灣高資產客戶的投資組合建議書撰寫「市場背景」摘要。"
+                                        "輸出 JSON 格式，包含：summary（80字以內市場總結）、points（4個市場重點觀察，每個20~35字）。"
+                                        "只輸出 JSON，不要有其他文字，不要加 ```。"
+                                    }]
+                                )
+                                mkt_text = mkt_resp.content[0].text.strip().replace("```json","").replace("```","").strip()
+                                market_background = json.loads(mkt_text)
+                            except Exception as e:
+                                market_background = {
+                                    "summary": "在全球利率高檔震盪、美元走勢分歧的環境下，多元資產配置成為兼顧收益與風險的最佳策略。",
+                                    "points": [
+                                        "美國聯準會降息步伐趨緩，長天期債券利率維持高位，短債與信用債具吸引力",
+                                        "全球央行持續增持黃金，實體資產在去美元化趨勢下需求強勁",
+                                        "股市波動加劇，高股息與多元收益型資產提供緩衝保護",
+                                        "台幣匯率波動下，美元計價資產搭配月配息商品有助穩定現金流",
+                                    ]
+                                }
+
+                        # ── Step B：在 Streamlit 生成基金介紹（讀 Google Drive PDF）──
+                        def _streamlit_get_fund_files():
+                            try:
+                                fund_folder_id = st.secrets.get("FUND_FOLDER_ID", "")
+                                if not fund_folder_id:
+                                    return []
+                                headers = get_drive_headers()
+                                params = {
+                                    "q": f"'{fund_folder_id}' in parents and trashed=false",
+                                    "fields": "files(id, name, mimeType, modifiedTime)",
+                                    "orderBy": "modifiedTime desc",
+                                }
+                                resp_f = requests.get("https://www.googleapis.com/drive/v3/files",
+                                                      headers=headers, params=params, timeout=15)
+                                return resp_f.json().get("files", [])
+                            except:
+                                return []
+
+                        def _streamlit_download_file(file_id):
+                            headers = get_drive_headers()
+                            resp_f = requests.get(
+                                f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media",
+                                headers=headers, timeout=30
+                            )
+                            return resp_f.content
+
+                        def _streamlit_extract_pdf(pdf_bytes, max_chars=3000):
+                            try:
+                                import io as _io
+                                try:
+                                    import pypdf
+                                    reader = pypdf.PdfReader(_io.BytesIO(pdf_bytes))
+                                    return "\n".join(p.extract_text() or "" for p in reader.pages[:6])[:max_chars]
+                                except ImportError:
+                                    pass
+                                try:
+                                    import pdfplumber
+                                    with pdfplumber.open(_io.BytesIO(pdf_bytes)) as pdf:
+                                        return "\n".join(p.extract_text() or "" for p in pdf.pages[:6])[:max_chars]
+                                except ImportError:
+                                    pass
+                                return ""
+                            except:
+                                return ""
+
+                        def _find_fund_file(fund_name, files):
+                            import re as _re
+                            keywords = [w for w in _re.split(r"[\s\-_()（）基金]", fund_name) if len(w) >= 2]
+                            best, best_score = None, 0
+                            for f in files:
+                                score = sum(1 for kw in keywords if kw.lower() in f["name"].lower())
+                                if score > best_score:
+                                    best_score, best = score, f
+                            return best if best_score > 0 else None
+
+                        def _gen_fund_strategies(fund_name, pdf_text):
+                            try:
+                                prompt = (
+                                    f"你是資深基金研究員。以下是「{fund_name}」的產品說明書摘錄：\n\n"
+                                    f"{pdf_text if pdf_text else '（請根據基金名稱推斷）'}\n\n"
+                                    "輸出一個 JSON 陣列，包含 3 個物件，每個有 title（20字內）和 desc（50~80字）。"
+                                    "只輸出 JSON 陣列，不要加 ```。"
+                                )
+                                r = _cl.messages.create(
+                                    model="claude-sonnet-4-20250514", max_tokens=600,
+                                    messages=[{"role": "user", "content": prompt}]
+                                )
+                                t = r.content[0].text.strip().replace("```json","").replace("```","").strip()
+                                strategies = json.loads(t)
+                                if isinstance(strategies, list) and len(strategies) >= 1:
+                                    return strategies[:3]
+                            except:
+                                pass
+                            return [
+                                {"title": "核心投資策略", "desc": f"{fund_name}以多元資產配置為核心，追求穩定收益與資本成長的平衡。"},
+                                {"title": "配息特色",     "desc": "月配息機制提供規律現金流，適合退休規劃與資產配置需求。"},
+                                {"title": "風險管理",     "desc": "透過跨市場、跨資產類別分散投資，有效控制波動風險。"},
+                            ]
+
+                        fund_files = _streamlit_get_fund_files()
+
                         # ── 整理標的介紹資料 ──
                         ppt_assets = []
                         bar_colors = ["2e7d32","1565a0","6a1b9a","e65100","00838f","c62828"]
@@ -1694,9 +1801,7 @@ if st.session_state.result_ready:
                             if isin:
                                 info = BOND_DB[isin]
                                 ppt_assets.append({
-                                    "name": lbl,
-                                    "type": "公司債",
-                                    "isin": isin,
+                                    "name": lbl, "type": "公司債", "isin": isin,
                                     "coupon": info.get("coupon", 0),
                                     "maturity": info.get("maturity", ""),
                                     "weight": float(w),
@@ -1709,7 +1814,9 @@ if st.session_state.result_ready:
                                     "highlights": ["投資等級信用評級","固定半年配息","低波動穩定收益"],
                                     "footnote": f"配置比例 {w:.1%}  |  票息率 {info.get('coupon',0)}%  |  到期年 {info.get('maturity','')}",
                                     "performance": {"as_of": datetime.today().strftime("%Y/%m/%d"), "col1": "年化報酬", "col2": "年化波動", "rows": [
-                                        {"period": f"{st.session_state.period_label}回測", "val1": f"{ann_ret.get(lbl, 0):.2%}" if hasattr(ann_ret, 'get') else f"{float(ann_ret.iloc[labels.index(lbl)]):.2%}", "val2": f"{ann_vol.get(lbl, 0):.2%}" if hasattr(ann_vol, 'get') else f"{float(ann_vol.iloc[labels.index(lbl)]):.2%}"},
+                                        {"period": f"{st.session_state.period_label}回測",
+                                         "val1": f"{float(ann_ret.iloc[labels.index(lbl)]):.2%}",
+                                         "val2": f"{float(ann_vol.iloc[labels.index(lbl)]):.2%}"},
                                     ]},
                                     "allocation": {"as_of": datetime.today().strftime("%Y/%m"), "items": [
                                         {"pct": f"{w:.1%}", "label": "本標的"},
@@ -1717,21 +1824,28 @@ if st.session_state.result_ready:
                                     ]},
                                 })
                             elif ticker:
+                                # ★ 在 Streamlit 讀 PDF + 生成基金介紹
+                                pdf_text = ""
+                                fund_file = _find_fund_file(lbl, fund_files)
+                                if fund_file:
+                                    try:
+                                        pdf_bytes = _streamlit_download_file(fund_file["id"])
+                                        pdf_text = _streamlit_extract_pdf(pdf_bytes)
+                                    except:
+                                        pass
+                                strategies = _gen_fund_strategies(lbl, pdf_text)
+                                src_note = f"資料來源：{fund_file['name']}" if fund_file else "資料來源：AI推斷"
                                 ppt_assets.append({
-                                    "name": lbl,
-                                    "type": "基金",
-                                    "ticker": ticker,
+                                    "name": lbl, "type": "基金", "ticker": ticker,
                                     "weight": float(w),
                                     "bar_color": bar_colors[ai % len(bar_colors)],
-                                    "strategies": [
-                                        {"title": "核心策略", "desc": f"{lbl}，以追求穩定收益與資本成長為目標。"},
-                                        {"title": "配息特色", "desc": "月配息策略，提供規律現金流，適合退休規劃與資產配置。"},
-                                        {"title": "風險管理", "desc": "透過多元分散投資，有效控制個別標的風險，降低整體波動。"},
-                                    ],
+                                    "strategies": strategies,
                                     "highlights": ["月配息穩定現金流","多元分散投資","專業主動管理"],
-                                    "footnote": f"配置比例 {w:.1%}  |  月配息基金",
+                                    "footnote": f"配置比例 {w:.1%}  |  月配息基金  |  {src_note}",
                                     "performance": {"as_of": datetime.today().strftime("%Y/%m/%d"), "col1": "年化報酬", "col2": "年化波動", "rows": [
-                                        {"period": f"{st.session_state.period_label}回測", "val1": f"{float(ann_ret.iloc[labels.index(lbl)]):.2%}", "val2": f"{float(ann_vol.iloc[labels.index(lbl)]):.2%}"},
+                                        {"period": f"{st.session_state.period_label}回測",
+                                         "val1": f"{float(ann_ret.iloc[labels.index(lbl)]):.2%}",
+                                         "val2": f"{float(ann_vol.iloc[labels.index(lbl)]):.2%}"},
                                     ]},
                                     "allocation": {"as_of": datetime.today().strftime("%Y/%m"), "items": [
                                         {"pct": f"{w:.1%}", "label": "本標的"},
@@ -1777,14 +1891,15 @@ if st.session_state.result_ready:
                         # ── 組合 JSON payload ──
                         strategy_name = " × ".join([a["name"][:6] for a in ppt_assets[:2]]) + " 多元配置策略" if len(ppt_assets) >= 2 else "最適投資組合策略"
                         ppt_payload = {
-                            "client_name":       ppt_client,
-                            "investment_amount": ppt_amount,
-                            "strategy_name":     strategy_name,
-                            "strategy_goal":     ppt_goal,
-                            "expected_return":   f"{port_ret:.2%}",
-                            "monthly_income":    f"NT${total_income_ppt/12:,.0f}" if total_income_ppt else "—",
-                            "report_date":       ppt_date.strftime("%Y-%m-%d"),
-                            "assets":            ppt_assets,
+                            "client_name":        ppt_client,
+                            "investment_amount":  ppt_amount,
+                            "strategy_name":      strategy_name,
+                            "strategy_goal":      ppt_goal,
+                            "expected_return":    f"{port_ret:.2%}",
+                            "monthly_income":     f"NT${total_income_ppt/12:,.0f}" if total_income_ppt else "—",
+                            "report_date":        ppt_date.strftime("%Y-%m-%d"),
+                            "market_background":  market_background,
+                            "assets":             ppt_assets,
                             "excluded": {
                                 "title":      f"為什麼不納入{excl_name[:8]}？－科學回測告訴我們" if excluded_assets else "所有候選標的均納入最適組合",
                                 "name":       excl_name,
