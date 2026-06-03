@@ -793,7 +793,7 @@ method_label = st.sidebar.radio("選擇策略", list(method_map.keys()))
 method = method_map[method_label]
 target_return = 0.08
 if method == "target_return":
-    target_return = st.sidebar.slider("目標年化報酬率 %", 1.0, 30.0, 8.0, 0.5) / 100
+    target_return = st.sidebar.slider("目標年化報酬率 %", 1.0, 80.0, 8.0, 0.5) / 100
 if method == "custom":
     st.sidebar.info("💡 請在「標的選擇」分頁選好標的後，於下方輸入各標的投資金額。")
 
@@ -1240,26 +1240,40 @@ if st.session_state.result_ready:
         st.plotly_chart(fig_corr, use_container_width=True)
         st.markdown("---")
 
-        # ★ 年度報酬長條圖（仿 FinLab 風格）
+        # ★ 年度報酬長條圖（用真實投組日報酬序列按年切割）
         st.markdown("**📅 年度報酬比較**")
-        price_df = (1 + returns_df).cumprod()
-        port_price = (1 + returns_df.dot(weights)).cumprod()
 
-        # 計算各年度報酬
-        annual_port = price_df.resample("YE").last().pct_change().dropna()
-        annual_port_ret = port_price.resample("YE").last().pct_change().dropna()
+        # 投組真實日報酬序列
+        port_daily_annual = returns_df.dot(weights)
 
-        # 過濾掉當年度（資料不完整）
-        curr_year = datetime.now().year
-        annual_port     = annual_port[annual_port.index.year != curr_year]
-        annual_port_ret = annual_port_ret[annual_port_ret.index.year != curr_year]
+        # 按年切割，計算每年實際報酬（非平均，是當年累積）
+        port_annual_by_year = {}
+        for yr, grp in port_daily_annual.groupby(port_daily_annual.index.year):
+            if yr == datetime.now().year:
+                continue  # 排除當年度（資料不完整）
+            if len(grp) < 20:
+                continue
+            annual_cum = (1 + grp).prod() - 1
+            port_annual_by_year[str(yr)] = annual_cum * 100
 
-        if len(annual_port_ret) > 0:
-            years_list = [str(y) for y in annual_port_ret.index.year]
-            port_vals  = annual_port_ret.values * 100
+        # 各標的按年切割
+        asset_annual_by_year = {}
+        for lbl in labels[:4]:  # 最多顯示前4個標的
+            if lbl not in returns_df.columns:
+                continue
+            asset_annual_by_year[lbl] = {}
+            for yr, grp in returns_df[lbl].groupby(returns_df[lbl].index.year):
+                if yr == datetime.now().year:
+                    continue
+                if len(grp) < 20:
+                    continue
+                asset_annual_by_year[lbl][str(yr)] = ((1 + grp).prod() - 1) * 100
+
+        if port_annual_by_year:
+            years_list = sorted(port_annual_by_year.keys())
+            port_vals  = [port_annual_by_year[yr] for yr in years_list]
 
             fig_annual = go.Figure()
-            # 投資組合長條
             bar_colors = ["#1565c0" if v >= 0 else "#c62828" for v in port_vals]
             fig_annual.add_trace(go.Bar(
                 x=years_list, y=port_vals,
@@ -1270,17 +1284,18 @@ if st.session_state.result_ready:
                 textfont=dict(size=11, color=bar_colors),
             ))
 
-            # 各標的折線（最多顯示前3個）
+            # 各標的折線
             line_colors = ["#ff9800", "#2e7d32", "#9c27b0", "#00838f"]
             for i, lbl in enumerate(labels[:4]):
-                if lbl in annual_port.columns:
-                    lbl_vals = annual_port[lbl].values * 100
+                if lbl in asset_annual_by_year:
+                    lbl_vals = [asset_annual_by_year[lbl].get(yr, None) for yr in years_list]
                     fig_annual.add_trace(go.Scatter(
                         x=years_list, y=lbl_vals,
                         name=lbl[:12],
                         mode="lines+markers",
                         line=dict(color=line_colors[i % len(line_colors)], width=2, dash="dot"),
                         marker=dict(size=6),
+                        connectgaps=True,
                     ))
 
             fig_annual.add_hline(y=0, line_color="#888", line_width=1)
@@ -1294,7 +1309,7 @@ if st.session_state.result_ready:
             )
             st.plotly_chart(fig_annual, use_container_width=True)
 
-            # 年度數字摘要（仿 FinLab 底部列）
+            # 年度數字摘要列
             ann_summary_cols = st.columns(len(years_list))
             for ci, (yr, val) in enumerate(zip(years_list, port_vals)):
                 color = "#1565c0" if val >= 0 else "#c62828"
