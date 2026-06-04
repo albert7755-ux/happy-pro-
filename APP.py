@@ -311,7 +311,7 @@ FUND_DB = {
     "F0GBR04MRL_FO": "聯博美國收益EA穩定月配",
     "FOGBR05KHT_FO": "PIMCO多元收益",
     "F0000000P6_FO": "貝萊德全球智慧數據股票入息基金",
-    "F00000T0K2_FO": "聯博-美國成長基金",
+    "F00000T0K2_FO": "聯博-美國成長基金EP",
     "F00000T1CG_FO": "聯博-優化波動股票基金",
     "F000015CRE_FO": "富蘭克林穩定月收益A(acc)",
 }
@@ -1007,6 +1007,10 @@ if "result_ready" not in st.session_state:
     st.session_state.result_ready = False
 
 if run_btn and total_selected >= 2:
+    # ★ 暫時偵錯：印出 Drive 裡的基金 Sheet 清單（確認後刪除）
+    with st.expander("🔍 偵錯：Drive 基金 Sheet 清單（確認後可忽略）", expanded=True):
+        _debug_sheets = list_sheets_in_folder(FUND_FOLDER_ID)
+        st.write(_debug_sheets)
     with st.spinner("正在讀取資料並計算中，請稍候..."):
         try:
             end_date = pd.Timestamp.today()
