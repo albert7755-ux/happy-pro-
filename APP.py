@@ -311,7 +311,7 @@ FUND_DB = {
     "F0GBR04MRL_FO": "聯博美國收益EA穩定月配",
     "FOGBR05KHT_FO": "PIMCO多元收益",
     "F0000000P6_FO": "貝萊德全球智慧數據股票入息基金",
-    "F00000T0K2_FO": "聯博-美國成長基金EP",
+    "F00000T0K2_FO": "聯博-美國成長基金",
     "F00000T1CG_FO": "聯博-優化波動股票基金",
     "F000015CRE_FO": "富蘭克林穩定月收益A(acc)",
 }
@@ -1070,7 +1070,22 @@ if run_btn and total_selected >= 2:
                 fund_sheets = list_sheets_in_folder(FUND_FOLDER_ID)
                 for ticker in selected_funds:
                     fund_name = FUND_DB[ticker]
-                    sheet_id  = fund_sheets.get(ticker)
+                    # ★ 模糊比對：Sheet 名稱包含 ticker（去掉 _FO / :FO 後綴再比對）
+                    ticker_clean = ticker.replace("_FO", "").replace(":FO", "").replace("_fo", "")
+                    sheet_id = fund_sheets.get(ticker)  # 先試完全一致
+                    if not sheet_id:
+                        # 再試：sheet 名稱包含 ticker_clean
+                        for sname, sid in fund_sheets.items():
+                            if ticker_clean.lower() in sname.lower():
+                                sheet_id = sid
+                                break
+                    if not sheet_id:
+                        # 最後試：sheet 名稱包含基金名稱關鍵字
+                        name_keywords = [w for w in fund_name.replace("-","").replace("（","").replace("）","").split() if len(w) >= 2]
+                        for sname, sid in fund_sheets.items():
+                            if any(kw in sname for kw in name_keywords):
+                                sheet_id = sid
+                                break
                     if not sheet_id:
                         st.warning(f"找不到 {fund_name} 的資料，跳過")
                         continue
@@ -2528,10 +2543,20 @@ with tab_transform:
                     elif asset_type == "FUND":
                         ticker = asset_info.get("ticker")
                         sheet_id = None
-                        for sname, sid in fund_sheets.items():
-                            if ticker and ticker.replace("_FO","") in sname:
-                                sheet_id = sid
-                                break
+                        if ticker:
+                            ticker_clean = ticker.replace("_FO","").replace(":FO","").replace("_fo","")
+                            # 先試 ticker_clean 完全包含在 sheet 名稱
+                            for sname, sid in fund_sheets.items():
+                                if ticker_clean.lower() in sname.lower():
+                                    sheet_id = sid
+                                    break
+                            # 再試基金名稱關鍵字比對
+                            if not sheet_id:
+                                name_keywords = [w for w in name.replace("-","").split() if len(w) >= 2]
+                                for sname, sid in fund_sheets.items():
+                                    if any(kw in sname for kw in name_keywords):
+                                        sheet_id = sid
+                                        break
                         if sheet_id:
                             try:
                                 raw = read_sheet_as_series(sheet_id, name)
