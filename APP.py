@@ -560,7 +560,7 @@ def get_chinese_font():
     except:
         return "Helvetica"
 
-def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret, port_vol, port_sharpe, method_name, period_label, commentary=None):
+def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret, port_vol, port_sharpe, method_name, period_label, commentary=None, principal=10000000):
     buf = io.BytesIO()
     font = get_chinese_font()
     NAVY = colors.HexColor("#1a2744")
@@ -817,9 +817,90 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
     total_income_pdf = st.session_state.get("total_income_cf", 0)
     avg_yield_pdf = st.session_state.get("avg_yield_cf", 0)
 
+    # ── 五、資產成長預測圖 ──
+    story.append(PageBreak())
+    story.append(Paragraph("五、資產成長預測", h2_s))
+    story.append(HRFlowable(width="100%", thickness=2, color=GOLD, spaceAfter=8))
+
+    try:
+        import plotly.graph_objects as _go
+        import plotly.io as _pio
+
+        mu_pdf  = port_ret
+        sig_pdf = port_vol
+        grow_yrs = 10  # PDF 預設顯示 10 年
+        yrs_pdf_list = list(range(grow_yrs + 1))
+        base_pdf    = [principal * (1 + mu_pdf) ** y for y in yrs_pdf_list]
+        optimis_pdf = [principal * (1 + mu_pdf + sig_pdf * 0.5) ** y for y in yrs_pdf_list]
+        pessim_pdf  = [principal * (1 + max(mu_pdf - sig_pdf * 0.5, -0.2)) ** y for y in yrs_pdf_list]
+
+        fig_grow_pdf = _go.Figure()
+        fig_grow_pdf.add_trace(_go.Scatter(
+            x=yrs_pdf_list, y=pessim_pdf,
+            name=f"悲觀 ({max(mu_pdf-sig_pdf*0.5,-0.2):.1%})",
+            line=dict(color="#c62828", width=2, dash="dot"),
+        ))
+        fig_grow_pdf.add_trace(_go.Scatter(
+            x=yrs_pdf_list, y=optimis_pdf,
+            name=f"樂觀 ({mu_pdf+sig_pdf*0.5:.1%})",
+            line=dict(color="#2e7d32", width=2, dash="dot"),
+            fill="tonexty", fillcolor="rgba(200,230,200,0.2)",
+        ))
+        fig_grow_pdf.add_trace(_go.Scatter(
+            x=yrs_pdf_list, y=base_pdf,
+            name=f"預期 ({mu_pdf:.1%})",
+            line=dict(color="#1565c0", width=3),
+        ))
+        fig_grow_pdf.add_annotation(
+            x=grow_yrs, y=base_pdf[-1],
+            text=f"NT${base_pdf[-1]:,.0f}",
+            showarrow=True, arrowhead=2, ax=-60, ay=-30,
+            font=dict(size=11, color="#1565c0"),
+            bgcolor="white", bordercolor="#1565c0",
+        )
+        fig_grow_pdf.update_layout(
+            xaxis_title="年數", yaxis_title="資產總額（NT$）",
+            height=380, width=680,
+            legend=dict(orientation="h", y=1.08),
+            yaxis=dict(tickformat=",.0f"),
+            margin=dict(l=60, r=40, t=40, b=50),
+        )
+        img_bytes_grow = _pio.to_image(fig_grow_pdf, format="png", scale=2)
+        from reportlab.platypus import Image as RLImage
+        from reportlab.lib.utils import ImageReader
+        import io as _io2
+        grow_img = RLImage(_io2.BytesIO(img_bytes_grow), width=17*cm, height=9.5*cm)
+        story.append(grow_img)
+        story.append(Spacer(1, 0.2*cm))
+
+        # 摘要列
+        summ_data = [
+            ["情境", "10年後資產", "累積報酬率"],
+            [f"😐 預期（{mu_pdf:.1%}）",    f"NT${base_pdf[-1]:,.0f}",    f"{(base_pdf[-1]/principal-1):.1%}"],
+            [f"😊 樂觀（{mu_pdf+sig_pdf*0.5:.1%}）", f"NT${optimis_pdf[-1]:,.0f}", f"{(optimis_pdf[-1]/principal-1):.1%}"],
+            [f"😟 悲觀（{max(mu_pdf-sig_pdf*0.5,-0.2):.1%}）", f"NT${pessim_pdf[-1]:,.0f}", f"{(pessim_pdf[-1]/principal-1):.1%}"],
+        ]
+        summ_tbl = Table(summ_data, colWidths=[6*cm, 6*cm, 5*cm])
+        summ_tbl.setStyle(TableStyle([
+            ("BACKGROUND",(0,0),(-1,0),NAVY),("TEXTCOLOR",(0,0),(-1,0),WHITE),
+            ("FONTNAME",(0,0),(-1,-1),font),("FONTSIZE",(0,0),(-1,-1),9),
+            ("ALIGN",(0,0),(-1,-1),"CENTER"),("ROWBACKGROUNDS",(0,1),(-1,-1),[BG,WHITE]),
+            ("GRID",(0,0),(-1,-1),0.3,colors.HexColor("#dddddd")),
+            ("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5),
+            ("TEXTCOLOR",(0,3),(-1,3),colors.HexColor("#c62828")),
+        ]))
+        story.append(summ_tbl)
+        story.append(Spacer(1, 0.2*cm))
+        story.append(Paragraph(f"※ 投入本金 NT${principal:,.0f}，基於歷史年化報酬 {mu_pdf:.2%} 與波動率 {sig_pdf:.2%} 模擬，不保證未來績效。", small_s))
+    except Exception as _e:
+        story.append(Paragraph(f"※ 資產成長預測圖生成失敗（請確認已安裝 kaleido）：{str(_e)[:100]}", small_s))
+
+    story.append(Spacer(1, 0.4*cm))
+
+    # ── 六、配息現金流試算 ──
     if cf_items_pdf and monthly_total_pdf:
         story.append(PageBreak())
-        story.append(Paragraph("五、配息現金流試算", h2_s))
+        story.append(Paragraph("六、配息現金流試算", h2_s))
         story.append(HRFlowable(width="100%", thickness=2, color=GOLD, spaceAfter=8))
 
         # KPI 摘要
@@ -1920,7 +2001,7 @@ if st.session_state.result_ready:
                         annual_returns=annual_rets_for_ai
                     )
 
-                pdf_buf = generate_pdf(weights, labels, ann_ret, ann_vol, sharpe_r, returns_df, port_ret, port_vol, port_sharpe, st.session_state.method_label, st.session_state.period_label, commentary=commentary)
+                pdf_buf = generate_pdf(weights, labels, ann_ret, ann_vol, sharpe_r, returns_df, port_ret, port_vol, port_sharpe, st.session_state.method_label, st.session_state.period_label, commentary=commentary, principal=principal_input)
                 st.download_button("📥 下載 PDF 報告", data=pdf_buf, file_name=f"最適組合_{datetime.today().strftime('%Y%m%d')}.pdf", mime="application/pdf", use_container_width=True)
 
         # ==========================================
