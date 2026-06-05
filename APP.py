@@ -915,6 +915,15 @@ st.markdown("---")
 # 載入 bond_master
 BOND_DB = load_bond_master()
 
+st.sidebar.header("💵 投資本金")
+principal_input = st.sidebar.number_input(
+    "投入金額（台幣）",
+    min_value=100000, max_value=500000000,
+    value=10000000, step=100000, format="%d",
+    key="principal_input_sidebar",
+    help="此金額同時用於配息現金流試算與資產成長預測"
+)
+
 st.sidebar.header("1. 回測期間")
 period_options = {"1年": 1, "2年": 2, "3年": 3, "4年": 4, "5年": 5, "6年": 6, "7年": 7, "8年": 8, "9年": 9, "10年": 10, "自訂": 0}
 period_label = st.sidebar.radio("選擇回測期間", list(period_options.keys()), horizontal=True)
@@ -1490,12 +1499,9 @@ if st.session_state.result_ready:
 
         grow_col1, grow_col2 = st.columns([1, 3])
         with grow_col1:
-            grow_principal = st.number_input(
-                "投入本金（台幣）",
-                min_value=100000, max_value=500000000,
-                value=10000000, step=100000, format="%d",
-                key="grow_principal"
-            )
+            # ★ 使用左側欄的統一投資本金
+            grow_principal = principal_input
+            st.info(f"💵 投入本金：NT${grow_principal:,.0f}")
             grow_years = st.slider("預期投入年數", min_value=1, max_value=30, value=10, step=1, key="grow_years")
 
         with grow_col2:
@@ -1614,16 +1620,8 @@ if st.session_state.result_ready:
         st.subheader("💰 配息現金流試算")
         st.caption("根據最適配置比例自動帶入，債券使用當前殖利率，基金配息率可手動調整。")
 
-        # ★ 投資本金移到左欄，與基金配息率並排
-        cf_left, cf_right = st.columns([1, 2])
-
-        with cf_left:
-            principal_cf = st.number_input(
-                "💵 投資本金（台幣）",
-                min_value=100000, max_value=100000000,
-                value=10000000, step=100000, format="%d",
-                key="principal_cf_input"
-            )
+        # ★ 使用左側欄的統一投資本金
+        principal_cf = principal_input
 
         # 基金配息率調整
         fund_labels_in = [lbl for lbl, w in zip(labels, weights) if w > 0.001 and lbl in [FUND_DB.get(k, "") for k in FUND_DB]]
@@ -1644,20 +1642,19 @@ if st.session_state.result_ready:
                 if isin:
                     bond_labels_in.append((lbl, isin, w))
 
-        with cf_right:
-            if fund_labels_cf:
-                st.markdown("**📊 基金配息率調整**")
-                fund_cols = st.columns(min(len(fund_labels_cf), 3))
-                for i, (lbl, ticker, w) in enumerate(fund_labels_cf):
-                    default_yield = FUND_YIELD_DB.get(ticker, 0.08)
-                    with fund_cols[i % 3]:
-                        adj = st.slider(
-                            f"{lbl[:12]}",
-                            min_value=1.0, max_value=20.0,
-                            value=round(default_yield * 100, 2),
-                            step=0.01, format="%.2f%%"
-                        ) / 100
-                        adjusted_yields[ticker] = adj
+        if fund_labels_cf:
+            st.markdown("**📊 基金配息率調整**")
+            fund_cols = st.columns(min(len(fund_labels_cf), 3))
+            for i, (lbl, ticker, w) in enumerate(fund_labels_cf):
+                default_yield = FUND_YIELD_DB.get(ticker, 0.08)
+                with fund_cols[i % 3]:
+                    adj = st.slider(
+                        f"{lbl[:12]}",
+                        min_value=1.0, max_value=20.0,
+                        value=round(default_yield * 100, 2),
+                        step=0.01, format="%.2f%%"
+                    ) / 100
+                    adjusted_yields[ticker] = adj
 
         # 計算現金流
         months_names = ["一月","二月","三月","四月","五月","六月","七月","八月","九月","十月","十一月","十二月"]
