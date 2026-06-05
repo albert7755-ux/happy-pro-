@@ -823,57 +823,65 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
     story.append(HRFlowable(width="100%", thickness=2, color=GOLD, spaceAfter=8))
 
     try:
-        import plotly.graph_objects as _go
-        import plotly.io as _pio
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import matplotlib.ticker as mticker
 
         mu_pdf  = port_ret
         sig_pdf = port_vol
-        grow_yrs = 10  # PDF 預設顯示 10 年
+        grow_yrs = 10
         yrs_pdf_list = list(range(grow_yrs + 1))
         base_pdf    = [principal * (1 + mu_pdf) ** y for y in yrs_pdf_list]
         optimis_pdf = [principal * (1 + mu_pdf + sig_pdf * 0.5) ** y for y in yrs_pdf_list]
         pessim_pdf  = [principal * (1 + max(mu_pdf - sig_pdf * 0.5, -0.2)) ** y for y in yrs_pdf_list]
 
-        fig_grow_pdf = _go.Figure()
-        fig_grow_pdf.add_trace(_go.Scatter(
-            x=yrs_pdf_list, y=pessim_pdf,
-            name=f"悲觀 ({max(mu_pdf-sig_pdf*0.5,-0.2):.1%})",
-            line=dict(color="#c62828", width=2, dash="dot"),
-        ))
-        fig_grow_pdf.add_trace(_go.Scatter(
-            x=yrs_pdf_list, y=optimis_pdf,
-            name=f"樂觀 ({mu_pdf+sig_pdf*0.5:.1%})",
-            line=dict(color="#2e7d32", width=2, dash="dot"),
-            fill="tonexty", fillcolor="rgba(200,230,200,0.2)",
-        ))
-        fig_grow_pdf.add_trace(_go.Scatter(
-            x=yrs_pdf_list, y=base_pdf,
-            name=f"預期 ({mu_pdf:.1%})",
-            line=dict(color="#1565c0", width=3),
-        ))
-        fig_grow_pdf.add_annotation(
-            x=grow_yrs, y=base_pdf[-1],
-            text=f"NT${base_pdf[-1]:,.0f}",
-            showarrow=True, arrowhead=2, ax=-60, ay=-30,
-            font=dict(size=11, color="#1565c0"),
-            bgcolor="white", bordercolor="#1565c0",
-        )
-        fig_grow_pdf.update_layout(
-            xaxis_title="年數", yaxis_title="資產總額（NT$）",
-            height=380, width=680,
-            legend=dict(orientation="h", y=1.08),
-            yaxis=dict(tickformat=",.0f"),
-            margin=dict(l=60, r=40, t=40, b=50),
-        )
-        img_bytes_grow = _pio.to_image(fig_grow_pdf, format="png", scale=2)
-        from reportlab.platypus import Image as RLImage
-        from reportlab.lib.utils import ImageReader
+        fig_mpl, ax = plt.subplots(figsize=(9, 4))
+        ax.fill_between(yrs_pdf_list, pessim_pdf, optimis_pdf, alpha=0.12, color="#1565c0", label="_nolegend_")
+        ax.plot(yrs_pdf_list, optimis_pdf, "--", color="#2e7d32", linewidth=1.5, label=f"樂觀 ({mu_pdf+sig_pdf*0.5:.1%})")
+        ax.plot(yrs_pdf_list, pessim_pdf,  "--", color="#c62828", linewidth=1.5, label=f"悲觀 ({max(mu_pdf-sig_pdf*0.5,-0.2):.1%})")
+        ax.plot(yrs_pdf_list, base_pdf,    "-",  color="#1565c0", linewidth=2.5, label=f"預期 ({mu_pdf:.1%})")
+
+        # 標示終點
+        ax.annotate(f"NT${base_pdf[-1]:,.0f}",
+                    xy=(grow_yrs, base_pdf[-1]),
+                    xytext=(-45, 10), textcoords="offset points",
+                    fontsize=9, color="#1565c0",
+                    arrowprops=dict(arrowstyle="->", color="#1565c0"))
+        ax.annotate(f"NT${optimis_pdf[-1]:,.0f}",
+                    xy=(grow_yrs, optimis_pdf[-1]),
+                    xytext=(-45, 8), textcoords="offset points",
+                    fontsize=8, color="#2e7d32",
+                    arrowprops=dict(arrowstyle="->", color="#2e7d32"))
+        ax.annotate(f"NT${pessim_pdf[-1]:,.0f}",
+                    xy=(grow_yrs, pessim_pdf[-1]),
+                    xytext=(-45, -18), textcoords="offset points",
+                    fontsize=8, color="#c62828",
+                    arrowprops=dict(arrowstyle="->", color="#c62828"))
+
+        ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"NT${x/1e6:.1f}M" if x >= 1e6 else f"NT${x:,.0f}"))
+        ax.set_xlabel("年數", fontsize=10)
+        ax.set_ylabel("資產總額", fontsize=10)
+        ax.set_xticks(yrs_pdf_list)
+        ax.legend(fontsize=9, loc="upper left")
+        ax.grid(axis="y", linestyle="--", alpha=0.4)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        plt.tight_layout()
+
+        # 存成 PNG bytes
         import io as _io2
-        grow_img = RLImage(_io2.BytesIO(img_bytes_grow), width=17*cm, height=9.5*cm)
+        img_buf = _io2.BytesIO()
+        fig_mpl.savefig(img_buf, format="png", dpi=150, bbox_inches="tight")
+        plt.close(fig_mpl)
+        img_buf.seek(0)
+
+        from reportlab.platypus import Image as RLImage
+        grow_img = RLImage(img_buf, width=17*cm, height=8*cm)
         story.append(grow_img)
         story.append(Spacer(1, 0.2*cm))
 
-        # 摘要列
+        # 摘要表
         summ_data = [
             ["情境", "10年後資產", "累積報酬率"],
             [f"😐 預期（{mu_pdf:.1%}）",    f"NT${base_pdf[-1]:,.0f}",    f"{(base_pdf[-1]/principal-1):.1%}"],
@@ -892,8 +900,9 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
         story.append(summ_tbl)
         story.append(Spacer(1, 0.2*cm))
         story.append(Paragraph(f"※ 投入本金 NT${principal:,.0f}，基於歷史年化報酬 {mu_pdf:.2%} 與波動率 {sig_pdf:.2%} 模擬，不保證未來績效。", small_s))
+
     except Exception as _e:
-        story.append(Paragraph(f"※ 資產成長預測圖生成失敗（請確認已安裝 kaleido）：{str(_e)[:100]}", small_s))
+        story.append(Paragraph(f"※ 資產成長預測圖生成失敗：{str(_e)[:150]}", small_s))
 
     story.append(Spacer(1, 0.4*cm))
 
