@@ -819,7 +819,7 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
 
     # ── 五、資產成長預測圖 ──
     story.append(PageBreak())
-    story.append(Paragraph("五、資產成長預測", h2_s))
+    story.append(Paragraph("五、歷史累積報酬走勢 ＆ 資產成長預測", h2_s))
     story.append(HRFlowable(width="100%", thickness=2, color=GOLD, spaceAfter=8))
 
     try:
@@ -827,66 +827,107 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         import matplotlib.ticker as mticker
+        import io as _io2
 
+        # ── 圖1：歷史累積報酬走勢 ──
+        port_daily_pdf = returns_df.dot(weights)
+        port_cum_pdf   = (1 + port_daily_pdf).cumprod()
+        port_cum_pdf   = port_cum_pdf / port_cum_pdf.iloc[0] * 100
+
+        fig1, ax1 = plt.subplots(figsize=(9, 3.5))
+        ax1.fill_between(port_cum_pdf.index, 100, port_cum_pdf.values,
+                         alpha=0.12, color="#1565c0")
+        ax1.plot(port_cum_pdf.index, port_cum_pdf.values,
+                 color="#1565c0", linewidth=2.5, label="Portfolio")
+        ax1.axhline(y=100, color="#888", linewidth=0.8, linestyle="--")
+
+        # 標示終點
+        final_cum = port_cum_pdf.iloc[-1]
+        total_cum_ret = (final_cum / 100 - 1) * 100
+        ax1.annotate(f"Cumulative {total_cum_ret:+.1f}%",
+                     xy=(port_cum_pdf.index[-1], final_cum),
+                     xytext=(-80, 10), textcoords="offset points",
+                     fontsize=9, color="#1565c0",
+                     arrowprops=dict(arrowstyle="->", color="#1565c0"))
+
+        ax1.set_ylabel("Cumulative Return (Base=100)", fontsize=9)
+        ax1.set_xlabel("Date", fontsize=9)
+        ax1.legend(fontsize=9, loc="upper left")
+        ax1.grid(axis="y", linestyle="--", alpha=0.3)
+        ax1.spines["top"].set_visible(False)
+        ax1.spines["right"].set_visible(False)
+        plt.tight_layout()
+
+        buf1 = _io2.BytesIO()
+        fig1.savefig(buf1, format="png", dpi=150, bbox_inches="tight")
+        plt.close(fig1)
+        buf1.seek(0)
+
+        from reportlab.platypus import Image as RLImage
+        story.append(Paragraph("歷史累積報酬走勢", ParagraphStyle("sh", fontName=font, fontSize=10, textColor=NAVY, spaceBefore=4, spaceAfter=4)))
+        story.append(RLImage(buf1, width=17*cm, height=7*cm))
+        story.append(Spacer(1, 0.4*cm))
+
+        # ── 圖2：資產成長預測 ──
         mu_pdf  = port_ret
         sig_pdf = port_vol
         grow_yrs = 10
-        yrs_pdf_list = list(range(grow_yrs + 1))
-        base_pdf    = [principal * (1 + mu_pdf) ** y for y in yrs_pdf_list]
-        optimis_pdf = [principal * (1 + mu_pdf + sig_pdf * 0.5) ** y for y in yrs_pdf_list]
-        pessim_pdf  = [principal * (1 + max(mu_pdf - sig_pdf * 0.5, -0.2)) ** y for y in yrs_pdf_list]
+        yrs_list = list(range(grow_yrs + 1))
+        base_pdf    = [principal * (1 + mu_pdf) ** y for y in yrs_list]
+        optimis_pdf = [principal * (1 + mu_pdf + sig_pdf * 0.5) ** y for y in yrs_list]
+        pessim_pdf  = [principal * (1 + max(mu_pdf - sig_pdf * 0.5, -0.2)) ** y for y in yrs_list]
 
-        fig_mpl, ax = plt.subplots(figsize=(9, 4))
-        ax.fill_between(yrs_pdf_list, pessim_pdf, optimis_pdf, alpha=0.12, color="#1565c0", label="_nolegend_")
-        ax.plot(yrs_pdf_list, optimis_pdf, "--", color="#2e7d32", linewidth=1.5, label=f"樂觀 ({mu_pdf+sig_pdf*0.5:.1%})")
-        ax.plot(yrs_pdf_list, pessim_pdf,  "--", color="#c62828", linewidth=1.5, label=f"悲觀 ({max(mu_pdf-sig_pdf*0.5,-0.2):.1%})")
-        ax.plot(yrs_pdf_list, base_pdf,    "-",  color="#1565c0", linewidth=2.5, label=f"預期 ({mu_pdf:.1%})")
+        fig2, ax2 = plt.subplots(figsize=(9, 3.8))
+        ax2.fill_between(yrs_list, pessim_pdf, optimis_pdf, alpha=0.12, color="#1565c0")
+        ax2.plot(yrs_list, optimis_pdf, "--", color="#2e7d32", linewidth=1.5,
+                 label=f"Optimistic ({mu_pdf+sig_pdf*0.5:.1%})")
+        ax2.plot(yrs_list, pessim_pdf,  "--", color="#c62828", linewidth=1.5,
+                 label=f"Pessimistic ({max(mu_pdf-sig_pdf*0.5,-0.2):.1%})")
+        ax2.plot(yrs_list, base_pdf,    "-",  color="#1565c0", linewidth=2.5,
+                 label=f"Expected ({mu_pdf:.1%})")
 
-        # 標示終點
-        ax.annotate(f"NT${base_pdf[-1]:,.0f}",
-                    xy=(grow_yrs, base_pdf[-1]),
-                    xytext=(-45, 10), textcoords="offset points",
-                    fontsize=9, color="#1565c0",
-                    arrowprops=dict(arrowstyle="->", color="#1565c0"))
-        ax.annotate(f"NT${optimis_pdf[-1]:,.0f}",
-                    xy=(grow_yrs, optimis_pdf[-1]),
-                    xytext=(-45, 8), textcoords="offset points",
-                    fontsize=8, color="#2e7d32",
-                    arrowprops=dict(arrowstyle="->", color="#2e7d32"))
-        ax.annotate(f"NT${pessim_pdf[-1]:,.0f}",
-                    xy=(grow_yrs, pessim_pdf[-1]),
-                    xytext=(-45, -18), textcoords="offset points",
-                    fontsize=8, color="#c62828",
-                    arrowprops=dict(arrowstyle="->", color="#c62828"))
+        ax2.annotate(f"NT${base_pdf[-1]/1e6:.1f}M",
+                     xy=(grow_yrs, base_pdf[-1]),
+                     xytext=(-50, 8), textcoords="offset points",
+                     fontsize=9, color="#1565c0",
+                     arrowprops=dict(arrowstyle="->", color="#1565c0"))
+        ax2.annotate(f"NT${optimis_pdf[-1]/1e6:.1f}M",
+                     xy=(grow_yrs, optimis_pdf[-1]),
+                     xytext=(-50, 8), textcoords="offset points",
+                     fontsize=8, color="#2e7d32",
+                     arrowprops=dict(arrowstyle="->", color="#2e7d32"))
+        ax2.annotate(f"NT${pessim_pdf[-1]/1e6:.1f}M",
+                     xy=(grow_yrs, pessim_pdf[-1]),
+                     xytext=(-50, -18), textcoords="offset points",
+                     fontsize=8, color="#c62828",
+                     arrowprops=dict(arrowstyle="->", color="#c62828"))
 
-        ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"NT${x/1e6:.1f}M" if x >= 1e6 else f"NT${x:,.0f}"))
-        ax.set_xlabel("年數", fontsize=10)
-        ax.set_ylabel("資產總額", fontsize=10)
-        ax.set_xticks(yrs_pdf_list)
-        ax.legend(fontsize=9, loc="upper left")
-        ax.grid(axis="y", linestyle="--", alpha=0.4)
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
+        ax2.yaxis.set_major_formatter(mticker.FuncFormatter(
+            lambda x, _: f"NT${x/1e6:.1f}M" if x >= 1e6 else f"NT${x:,.0f}"))
+        ax2.set_xlabel("Years", fontsize=9)
+        ax2.set_ylabel("Asset Value (NT$)", fontsize=9)
+        ax2.set_xticks(yrs_list)
+        ax2.legend(fontsize=9, loc="upper left")
+        ax2.grid(axis="y", linestyle="--", alpha=0.4)
+        ax2.spines["top"].set_visible(False)
+        ax2.spines["right"].set_visible(False)
         plt.tight_layout()
 
-        # 存成 PNG bytes
-        import io as _io2
-        img_buf = _io2.BytesIO()
-        fig_mpl.savefig(img_buf, format="png", dpi=150, bbox_inches="tight")
-        plt.close(fig_mpl)
-        img_buf.seek(0)
+        buf2 = _io2.BytesIO()
+        fig2.savefig(buf2, format="png", dpi=150, bbox_inches="tight")
+        plt.close(fig2)
+        buf2.seek(0)
 
-        from reportlab.platypus import Image as RLImage
-        grow_img = RLImage(img_buf, width=17*cm, height=8*cm)
-        story.append(grow_img)
+        story.append(Paragraph("資產成長預測（10年模擬）", ParagraphStyle("sh2", fontName=font, fontSize=10, textColor=NAVY, spaceBefore=4, spaceAfter=4)))
+        story.append(RLImage(buf2, width=17*cm, height=8*cm))
         story.append(Spacer(1, 0.2*cm))
 
         # 摘要表
         summ_data = [
             ["情境", "10年後資產", "累積報酬率"],
-            [f"😐 預期（{mu_pdf:.1%}）",    f"NT${base_pdf[-1]:,.0f}",    f"{(base_pdf[-1]/principal-1):.1%}"],
-            [f"😊 樂觀（{mu_pdf+sig_pdf*0.5:.1%}）", f"NT${optimis_pdf[-1]:,.0f}", f"{(optimis_pdf[-1]/principal-1):.1%}"],
-            [f"😟 悲觀（{max(mu_pdf-sig_pdf*0.5,-0.2):.1%}）", f"NT${pessim_pdf[-1]:,.0f}", f"{(pessim_pdf[-1]/principal-1):.1%}"],
+            [f"預期（{mu_pdf:.1%}）",    f"NT${base_pdf[-1]:,.0f}",    f"{(base_pdf[-1]/principal-1):.1%}"],
+            [f"樂觀（{mu_pdf+sig_pdf*0.5:.1%}）", f"NT${optimis_pdf[-1]:,.0f}", f"{(optimis_pdf[-1]/principal-1):.1%}"],
+            [f"悲觀（{max(mu_pdf-sig_pdf*0.5,-0.2):.1%}）", f"NT${pessim_pdf[-1]:,.0f}", f"{(pessim_pdf[-1]/principal-1):.1%}"],
         ]
         summ_tbl = Table(summ_data, colWidths=[6*cm, 6*cm, 5*cm])
         summ_tbl.setStyle(TableStyle([
@@ -899,10 +940,12 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
         ]))
         story.append(summ_tbl)
         story.append(Spacer(1, 0.2*cm))
-        story.append(Paragraph(f"※ 投入本金 NT${principal:,.0f}，基於歷史年化報酬 {mu_pdf:.2%} 與波動率 {sig_pdf:.2%} 模擬，不保證未來績效。", small_s))
+        story.append(Paragraph(
+            f"※ 投入本金 NT${principal:,.0f}，基於歷史年化報酬 {mu_pdf:.2%} 與波動率 {sig_pdf:.2%} 模擬，不保證未來績效。",
+            small_s))
 
     except Exception as _e:
-        story.append(Paragraph(f"※ 資產成長預測圖生成失敗：{str(_e)[:150]}", small_s))
+        story.append(Paragraph(f"※ 圖表生成失敗：{str(_e)[:150]}", small_s))
 
     story.append(Spacer(1, 0.4*cm))
 
