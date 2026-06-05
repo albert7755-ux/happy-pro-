@@ -1491,26 +1491,58 @@ if st.session_state.result_ready:
 
         # ★ 真實回測累積報酬走勢圖
         st.markdown("**📈 歷史累積報酬走勢**")
+
+        # Benchmark 設定欄
+        bm_col1, bm_col2, bm_col3 = st.columns([1, 1, 2])
+        with bm_col1:
+            bm_spy_pct = st.number_input("SPY 比重 %", min_value=0, max_value=100, value=60, step=5, key="bm_spy")
+        with bm_col2:
+            bm_tlt_pct = st.number_input("TLT 比重 %", min_value=0, max_value=100, value=40, step=5, key="bm_tlt")
+        with bm_col3:
+            bm_total = bm_spy_pct + bm_tlt_pct
+            if abs(bm_total - 100) > 0.1:
+                st.warning(f"⚠️ Benchmark 合計 {bm_total}%，需為 100%")
+            else:
+                st.success(f"✅ Benchmark：SPY {bm_spy_pct}% + TLT {bm_tlt_pct}%")
+
+        # 下載 Benchmark 資料
+        bm_start = returns_df.index[0] - pd.DateOffset(days=5)
+        bm_end   = returns_df.index[-1]
+        try:
+            spy_raw = yf.download("SPY", start=bm_start, end=bm_end, auto_adjust=True, progress=False)["Close"].squeeze()
+            tlt_raw = yf.download("TLT", start=bm_start, end=bm_end, auto_adjust=True, progress=False)["Close"].squeeze()
+            spy_ret = spy_raw.pct_change().dropna()
+            tlt_ret = tlt_raw.pct_change().dropna()
+            # 對齊日期
+            common_idx = returns_df.index.intersection(spy_ret.index).intersection(tlt_ret.index)
+            bm_ret = (spy_ret.loc[common_idx] * bm_spy_pct / 100 +
+                      tlt_ret.loc[common_idx] * bm_tlt_pct / 100)
+            bm_cum = (1 + bm_ret).cumprod()
+            bm_cum = bm_cum / bm_cum.iloc[0] * 100
+            has_bm = True
+        except:
+            has_bm = False
+
+        # 投組累積報酬
         port_daily_cum = returns_df.dot(weights)
-        port_cum_line  = (1 + port_daily_cum).cumprod()
-        port_cum_line  = port_cum_line / port_cum_line.iloc[0] * 100  # 標準化至起點=100
+        common_port_idx = returns_df.index if not has_bm else common_idx
+        port_daily_cum_aligned = port_daily_cum.loc[port_daily_cum.index.isin(common_port_idx if has_bm else returns_df.index)]
+        port_cum_line = (1 + port_daily_cum_aligned).cumprod()
+        port_cum_line = port_cum_line / port_cum_line.iloc[0] * 100
 
         fig_cum = go.Figure()
 
-        # 各標的折線（最多4條，淡色）
-        line_colors_cum = ["#ff9800","#2e7d32","#9c27b0","#00838f"]
-        for i, lbl in enumerate(labels[:4]):
-            if lbl in returns_df.columns:
-                lbl_cum = (1 + returns_df[lbl]).cumprod()
-                lbl_cum = lbl_cum / lbl_cum.iloc[0] * 100
-                fig_cum.add_trace(go.Scatter(
-                    x=lbl_cum.index, y=lbl_cum.values,
-                    name=lbl[:12],
-                    line=dict(color=line_colors_cum[i % len(line_colors_cum)], width=1.2, dash="dot"),
-                    opacity=0.6,
-                ))
+        # Benchmark 線（橘色虛線）
+        if has_bm and abs(bm_total - 100) <= 0.1:
+            fig_cum.add_trace(go.Scatter(
+                x=bm_cum.index, y=bm_cum.values,
+                name=f"Benchmark（SPY{bm_spy_pct}%+TLT{bm_tlt_pct}%）",
+                line=dict(color="#ff9800", width=2, dash="dash"),
+            ))
 
-        # 投組主線（粗藍線）
+        # 投組主線（藍色）
+        final_val  = port_cum_line.iloc[-1]
+        total_ret  = (final_val / 100 - 1) * 100
         fig_cum.add_trace(go.Scatter(
             x=port_cum_line.index, y=port_cum_line.values,
             name="📐 投資組合",
@@ -1522,9 +1554,7 @@ if st.session_state.result_ready:
         # 100 基準線
         fig_cum.add_hline(y=100, line_color="#888", line_width=0.8, line_dash="dash")
 
-        # 標示最終報酬
-        final_val = port_cum_line.iloc[-1]
-        total_ret = (final_val / 100 - 1) * 100
+        # 標示終點
         fig_cum.add_annotation(
             x=port_cum_line.index[-1], y=final_val,
             text=f"累積 {total_ret:+.1f}%",
@@ -1532,11 +1562,21 @@ if st.session_state.result_ready:
             font=dict(size=12, color="#1565c0"),
             bgcolor="white", bordercolor="#1565c0",
         )
+        if has_bm and abs(bm_total - 100) <= 0.1:
+            bm_final = bm_cum.iloc[-1]
+            bm_ret_total = (bm_final / 100 - 1) * 100
+            fig_cum.add_annotation(
+                x=bm_cum.index[-1], y=bm_final,
+                text=f"BM {bm_ret_total:+.1f}%",
+                showarrow=True, arrowhead=2, ax=-60, ay=30,
+                font=dict(size=11, color="#ff9800"),
+                bgcolor="white", bordercolor="#ff9800",
+            )
 
         fig_cum.update_layout(
             yaxis_title="累積報酬（起始=100）",
             hovermode="x unified",
-            height=350,
+            height=380,
             legend=dict(orientation="h", yanchor="bottom", y=1.02),
         )
         st.plotly_chart(fig_cum, use_container_width=True)
