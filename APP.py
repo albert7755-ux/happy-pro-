@@ -311,7 +311,7 @@ FUND_DB = {
     "F0GBR04MRL_FO": "聯博美國收益EA穩定月配",
     "FOGBR05KHT_FO": "PIMCO多元收益",
     "F0000000P6_FO": "貝萊德全球智慧數據股票入息基金",
-    "F0GBR04MRF_FO": "聯博-美國成長基金EP",
+    "F0GBR04MRF_FO": "聯博-美國成長基金",
     "F00000PA64_FO": "聯博-優化波動股票基金",
     "F000015CRE_FO": "富蘭克林穩定月收益A(acc)",
 }
@@ -766,6 +766,11 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
     if years_pdf >= 3: holding_periods_pdf["3年"] = 756
     if years_pdf >= 4: holding_periods_pdf["4年"] = 1008
     if years_pdf >= 5: holding_periods_pdf["5年"] = 1260
+    if years_pdf >= 6: holding_periods_pdf["6年"] = 1512
+    if years_pdf >= 7: holding_periods_pdf["7年"] = 1764
+    if years_pdf >= 8: holding_periods_pdf["8年"] = 2016
+    if years_pdf >= 9: holding_periods_pdf["9年"] = 2268
+    if years_pdf >= 10: holding_periods_pdf["10年"] = 2520
     port_daily_pdf = returns_df.dot(weights)
     all_series_pdf = {"投資組合": port_daily_pdf}
     for lbl in returns_df.columns:
@@ -911,9 +916,13 @@ st.markdown("---")
 BOND_DB = load_bond_master()
 
 st.sidebar.header("1. 回測期間")
-period_options = {"1年": 1, "2年": 2, "3年": 3, "4年": 4, "5年": 5}
+period_options = {"1年": 1, "2年": 2, "3年": 3, "4年": 4, "5年": 5, "6年": 6, "7年": 7, "8年": 8, "9年": 9, "10年": 10, "自訂": 0}
 period_label = st.sidebar.radio("選擇回測期間", list(period_options.keys()), horizontal=True)
-years = period_options[period_label]
+if period_label == "自訂":
+    years = st.sidebar.number_input("輸入年數", min_value=1, max_value=20, value=5, step=1)
+    period_label = f"{years}年"
+else:
+    years = period_options[period_label]
 st.sidebar.header("2. 優化目標")
 method_map = {"最大夏普比率": "max_sharpe", "最小風險": "min_vol", "鎖定目標報酬": "target_return", "自訂金額配置": "custom"}
 method_label = st.sidebar.radio("選擇策略", list(method_map.keys()))
@@ -1333,6 +1342,11 @@ if st.session_state.result_ready:
         if years >= 3: holding_periods["3年"] = 756
         if years >= 4: holding_periods["4年"] = 1008
         if years >= 5: holding_periods["5年"] = 1260
+        if years >= 6: holding_periods["6年"] = 1512
+        if years >= 7: holding_periods["7年"] = 1764
+        if years >= 8: holding_periods["8年"] = 2016
+        if years >= 9: holding_periods["9年"] = 2268
+        if years >= 10: holding_periods["10年"] = 2520
 
         def calc_win_rate(ret_series, days):
             rolling = (1 + ret_series).rolling(days).apply(np.prod, raw=True) - 1
@@ -1466,6 +1480,98 @@ if st.session_state.result_ready:
                 )
         st.markdown("---")
 
+        st.markdown("---")
+
+        # ==========================================
+        # ★ 資產成長預測圖
+        # ==========================================
+        st.subheader("📈 資產成長預測")
+        st.caption("根據回測年化報酬與波動率，模擬未來資產成長的三種情境。")
+
+        grow_col1, grow_col2 = st.columns([1, 3])
+        with grow_col1:
+            grow_principal = st.number_input(
+                "投入本金（台幣）",
+                min_value=100000, max_value=500000000,
+                value=10000000, step=100000, format="%d",
+                key="grow_principal"
+            )
+            grow_years = st.slider("預期投入年數", min_value=1, max_value=30, value=10, step=1, key="grow_years")
+
+        with grow_col2:
+            # 三條情境線
+            mu  = port_ret        # 年化報酬（中性）
+            sig = port_vol        # 年化波動
+
+            yrs = list(range(grow_years + 1))
+            base    = [grow_principal * (1 + mu) ** y for y in yrs]
+            optimis = [grow_principal * (1 + mu + sig * 0.5) ** y for y in yrs]
+            pessim  = [grow_principal * (1 + max(mu - sig * 0.5, -0.2)) ** y for y in yrs]
+
+            fig_grow = go.Figure()
+            fig_grow.add_trace(go.Scatter(
+                x=yrs, y=pessim,
+                name=f"悲觀 ({max(mu - sig*0.5,-0.2):.1%})",
+                line=dict(color="#c62828", width=2, dash="dot"),
+                fill=None,
+            ))
+            fig_grow.add_trace(go.Scatter(
+                x=yrs, y=optimis,
+                name=f"樂觀 ({mu + sig*0.5:.1%})",
+                line=dict(color="#2e7d32", width=2, dash="dot"),
+                fill="tonexty",
+                fillcolor="rgba(200,230,200,0.2)",
+            ))
+            fig_grow.add_trace(go.Scatter(
+                x=yrs, y=base,
+                name=f"預期 ({mu:.1%})",
+                line=dict(color="#1565c0", width=3),
+            ))
+
+            # 標示終點金額
+            fig_grow.add_annotation(
+                x=grow_years, y=base[-1],
+                text=f"NT${base[-1]:,.0f}",
+                showarrow=True, arrowhead=2,
+                font=dict(size=12, color="#1565c0"),
+                bgcolor="white", bordercolor="#1565c0",
+            )
+            fig_grow.add_annotation(
+                x=grow_years, y=optimis[-1],
+                text=f"NT${optimis[-1]:,.0f}",
+                showarrow=True, arrowhead=2, ax=40, ay=-30,
+                font=dict(size=11, color="#2e7d32"),
+                bgcolor="white", bordercolor="#2e7d32",
+            )
+            fig_grow.add_annotation(
+                x=grow_years, y=pessim[-1],
+                text=f"NT${pessim[-1]:,.0f}",
+                showarrow=True, arrowhead=2, ax=40, ay=30,
+                font=dict(size=11, color="#c62828"),
+                bgcolor="white", bordercolor="#c62828",
+            )
+
+            fig_grow.update_layout(
+                xaxis_title="年數",
+                yaxis_title="資產總額（NT$）",
+                hovermode="x unified",
+                height=400,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02),
+                yaxis=dict(tickformat=",.0f", tickprefix="NT$"),
+                xaxis=dict(tickmode="linear", dtick=1 if grow_years <= 10 else 2),
+            )
+            fig_grow.update_traces(
+                hovertemplate="NT$%{y:,.0f}<extra>%{fullData.name}</extra>"
+            )
+            st.plotly_chart(fig_grow, use_container_width=True)
+
+            # 摘要說明
+            summ_col1, summ_col2, summ_col3 = st.columns(3)
+            summ_col1.metric("😐 預期（中性）", f"NT${base[-1]:,.0f}", f"{(base[-1]/grow_principal - 1):.1%}")
+            summ_col2.metric("😊 樂觀情境", f"NT${optimis[-1]:,.0f}", f"{(optimis[-1]/grow_principal - 1):.1%}")
+            summ_col3.metric("😟 悲觀情境", f"NT${pessim[-1]:,.0f}", f"{(pessim[-1]/grow_principal - 1):.1%}", delta_color="inverse")
+            st.caption("⚠️ 此為基於歷史回測的模擬預測，不代表未來實際報酬，僅供參考。")
+
         with st.expander("🔍 資料明細（點擊展開）"):
             st.markdown("**各標的資料來源說明**")
             meta_rows = []
@@ -1508,7 +1614,16 @@ if st.session_state.result_ready:
         st.subheader("💰 配息現金流試算")
         st.caption("根據最適配置比例自動帶入，債券使用當前殖利率，基金配息率可手動調整。")
 
-        principal_cf = st.number_input("投資本金（台幣）", min_value=100000, max_value=100000000, value=10000000, step=100000, format="%d")
+        # ★ 投資本金移到左欄，與基金配息率並排
+        cf_left, cf_right = st.columns([1, 2])
+
+        with cf_left:
+            principal_cf = st.number_input(
+                "💵 投資本金（台幣）",
+                min_value=100000, max_value=100000000,
+                value=10000000, step=100000, format="%d",
+                key="principal_cf_input"
+            )
 
         # 基金配息率調整
         fund_labels_in = [lbl for lbl, w in zip(labels, weights) if w > 0.001 and lbl in [FUND_DB.get(k, "") for k in FUND_DB]]
@@ -1525,24 +1640,24 @@ if st.session_state.result_ready:
             if ticker and ticker in FUND_YIELD_DB:
                 fund_labels_cf.append((lbl, ticker, w))
             else:
-                # 找 ISIN
                 isin = next((k for k, v in BOND_DB.items() if v["issuer"] == lbl), None)
                 if isin:
                     bond_labels_in.append((lbl, isin, w))
 
-        if fund_labels_cf:
-            st.markdown("**📊 基金配息率調整**")
-            fund_cols = st.columns(min(len(fund_labels_cf), 3))
-            for i, (lbl, ticker, w) in enumerate(fund_labels_cf):
-                default_yield = FUND_YIELD_DB.get(ticker, 0.08)
-                with fund_cols[i % 3]:
-                    adj = st.slider(
-                        f"{lbl[:12]}",
-                        min_value=1.0, max_value=20.0,
-                        value=round(default_yield * 100, 2),
-                        step=0.01, format="%.2f%%"
-                    ) / 100
-                    adjusted_yields[ticker] = adj
+        with cf_right:
+            if fund_labels_cf:
+                st.markdown("**📊 基金配息率調整**")
+                fund_cols = st.columns(min(len(fund_labels_cf), 3))
+                for i, (lbl, ticker, w) in enumerate(fund_labels_cf):
+                    default_yield = FUND_YIELD_DB.get(ticker, 0.08)
+                    with fund_cols[i % 3]:
+                        adj = st.slider(
+                            f"{lbl[:12]}",
+                            min_value=1.0, max_value=20.0,
+                            value=round(default_yield * 100, 2),
+                            step=0.01, format="%.2f%%"
+                        ) / 100
+                        adjusted_yields[ticker] = adj
 
         # 計算現金流
         months_names = ["一月","二月","三月","四月","五月","六月","七月","八月","九月","十月","十一月","十二月"]
@@ -1903,6 +2018,11 @@ if st.session_state.result_ready:
                         if years >= 3: ppt_periods.append(("3 年",756))
                         if years >= 4: ppt_periods.append(("4 年",1008))
                         if years >= 5: ppt_periods.append(("5 年",1260))
+                        if years >= 6: ppt_periods.append(("6 年",1512))
+                        if years >= 7: ppt_periods.append(("7 年",1764))
+                        if years >= 8: ppt_periods.append(("8 年",2016))
+                        if years >= 9: ppt_periods.append(("9 年",2268))
+                        if years >= 10: ppt_periods.append(("10 年",2520))
                         for period_name, days in ppt_periods:
                             port_wr = calc_win_rate(returns_df.dot(weights), days)
                             fund_wrs = [calc_win_rate(returns_df[lbl], days) for lbl in labels[:2] if lbl in returns_df.columns]
