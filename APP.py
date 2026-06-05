@@ -1489,6 +1489,58 @@ if st.session_state.result_ready:
                 )
         st.markdown("---")
 
+        # ★ 真實回測累積報酬走勢圖
+        st.markdown("**📈 歷史累積報酬走勢**")
+        port_daily_cum = returns_df.dot(weights)
+        port_cum_line  = (1 + port_daily_cum).cumprod()
+        port_cum_line  = port_cum_line / port_cum_line.iloc[0] * 100  # 標準化至起點=100
+
+        fig_cum = go.Figure()
+
+        # 各標的折線（最多4條，淡色）
+        line_colors_cum = ["#ff9800","#2e7d32","#9c27b0","#00838f"]
+        for i, lbl in enumerate(labels[:4]):
+            if lbl in returns_df.columns:
+                lbl_cum = (1 + returns_df[lbl]).cumprod()
+                lbl_cum = lbl_cum / lbl_cum.iloc[0] * 100
+                fig_cum.add_trace(go.Scatter(
+                    x=lbl_cum.index, y=lbl_cum.values,
+                    name=lbl[:12],
+                    line=dict(color=line_colors_cum[i % len(line_colors_cum)], width=1.2, dash="dot"),
+                    opacity=0.6,
+                ))
+
+        # 投組主線（粗藍線）
+        fig_cum.add_trace(go.Scatter(
+            x=port_cum_line.index, y=port_cum_line.values,
+            name="📐 投資組合",
+            line=dict(color="#1565c0", width=3),
+            fill="tozeroy",
+            fillcolor="rgba(21,101,192,0.06)",
+        ))
+
+        # 100 基準線
+        fig_cum.add_hline(y=100, line_color="#888", line_width=0.8, line_dash="dash")
+
+        # 標示最終報酬
+        final_val = port_cum_line.iloc[-1]
+        total_ret = (final_val / 100 - 1) * 100
+        fig_cum.add_annotation(
+            x=port_cum_line.index[-1], y=final_val,
+            text=f"累積 {total_ret:+.1f}%",
+            showarrow=True, arrowhead=2, ax=-60, ay=-30,
+            font=dict(size=12, color="#1565c0"),
+            bgcolor="white", bordercolor="#1565c0",
+        )
+
+        fig_cum.update_layout(
+            yaxis_title="累積報酬（起始=100）",
+            hovermode="x unified",
+            height=350,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        )
+        st.plotly_chart(fig_cum, use_container_width=True)
+
         st.markdown("---")
 
         # ==========================================
