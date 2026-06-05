@@ -757,7 +757,15 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
     story.append(PageBreak())
     story.append(Paragraph("四、持有期間正報酬機率", h2_s))
     story.append(HRFlowable(width="100%", thickness=2, color=GOLD, spaceAfter=8))
-    holding_periods_pdf = {"1個月":21,"3個月":63,"6個月":126,"1年":252,"2年":504,"3年":756}
+    holding_periods_pdf = {"1個月":21,"3個月":63,"6個月":126,"1年":252}
+    try:
+        years_pdf = int(period_label.replace("年",""))
+    except:
+        years_pdf = 3
+    if years_pdf >= 2: holding_periods_pdf["2年"] = 504
+    if years_pdf >= 3: holding_periods_pdf["3年"] = 756
+    if years_pdf >= 4: holding_periods_pdf["4年"] = 1008
+    if years_pdf >= 5: holding_periods_pdf["5年"] = 1260
     port_daily_pdf = returns_df.dot(weights)
     all_series_pdf = {"投資組合": port_daily_pdf}
     for lbl in returns_df.columns:
@@ -1319,10 +1327,12 @@ if st.session_state.result_ready:
         st.markdown("---")
 
         st.markdown("**持有期間愈長，正報酬機率**")
-        holding_periods = {
-            "1個月": 21, "3個月": 63, "6個月": 126,
-            "1年": 252, "2年": 504, "3年": 756
-        }
+        # ★ 根據回測年數動態決定顯示哪些期間
+        holding_periods = {"1個月": 21, "3個月": 63, "6個月": 126, "1年": 252}
+        if years >= 2: holding_periods["2年"] = 504
+        if years >= 3: holding_periods["3年"] = 756
+        if years >= 4: holding_periods["4年"] = 1008
+        if years >= 5: holding_periods["5年"] = 1260
 
         def calc_win_rate(ret_series, days):
             rolling = (1 + ret_series).rolling(days).apply(np.prod, raw=True) - 1
@@ -1888,7 +1898,12 @@ if st.session_state.result_ready:
 
                         # ── 正報酬機率表 ──
                         win_rate_data = []
-                        for period_name, days in [("1 個月",21),("3 個月",63),("6 個月",126),("1 年",252),("2 年",504)]:
+                        ppt_periods = [("1 個月",21),("3 個月",63),("6 個月",126),("1 年",252)]
+                        if years >= 2: ppt_periods.append(("2 年",504))
+                        if years >= 3: ppt_periods.append(("3 年",756))
+                        if years >= 4: ppt_periods.append(("4 年",1008))
+                        if years >= 5: ppt_periods.append(("5 年",1260))
+                        for period_name, days in ppt_periods:
                             port_wr = calc_win_rate(returns_df.dot(weights), days)
                             fund_wrs = [calc_win_rate(returns_df[lbl], days) for lbl in labels[:2] if lbl in returns_df.columns]
                             win_rate_data.append({
