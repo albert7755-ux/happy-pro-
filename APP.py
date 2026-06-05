@@ -1492,57 +1492,102 @@ if st.session_state.result_ready:
         # ★ 真實回測累積報酬走勢圖
         st.markdown("**📈 歷史累積報酬走勢**")
 
-        # Benchmark 設定欄
-        bm_col1, bm_col2, bm_col3 = st.columns([1, 1, 2])
+        # Benchmark 設定
+        bm_col1, bm_col2 = st.columns([2, 3])
         with bm_col1:
-            bm_spy_pct = st.number_input("SPY 比重 %", min_value=0, max_value=100, value=60, step=5, key="bm_spy")
+            bm_input = st.text_area(
+                "Benchmark 標的與比例（每行一個，格式：代號:比例%）",
+                value="SPY:60\nTLT:40",
+                height=100, key="bm_input",
+                help="例如：\nSPY:60\nTLT:40\n或\nQQQ:50\nVCLT:50"
+            )
         with bm_col2:
-            bm_tlt_pct = st.number_input("TLT 比重 %", min_value=0, max_value=100, value=40, step=5, key="bm_tlt")
-        with bm_col3:
-            bm_total = bm_spy_pct + bm_tlt_pct
-            if abs(bm_total - 100) > 0.1:
-                st.warning(f"⚠️ Benchmark 合計 {bm_total}%，需為 100%")
-            else:
-                st.success(f"✅ Benchmark：SPY {bm_spy_pct}% + TLT {bm_tlt_pct}%")
+            # 解析輸入
+            bm_items = []
+            bm_parse_ok = True
+            bm_total = 0
+            for line in bm_input.strip().split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+                if ":" in line:
+                    parts = line.split(":")
+                elif "," in line:
+                    parts = line.split(",")
+                else:
+                    bm_parse_ok = False
+                    break
+                if len(parts) != 2:
+                    bm_parse_ok = False
+                    break
+                ticker_bm = parts[0].strip().upper()
+                try:
+                    pct_bm = float(parts[1].strip().replace("%",""))
+                    bm_items.append((ticker_bm, pct_bm / 100))
+                    bm_total += pct_bm
+                except:
+                    bm_parse_ok = False
+                    break
 
-        # 下載 Benchmark 資料
-        bm_start = returns_df.index[0] - pd.DateOffset(days=5)
-        bm_end   = returns_df.index[-1]
-        try:
-            spy_raw = yf.download("SPY", start=bm_start, end=bm_end, auto_adjust=True, progress=False)["Close"].squeeze()
-            tlt_raw = yf.download("TLT", start=bm_start, end=bm_end, auto_adjust=True, progress=False)["Close"].squeeze()
-            spy_ret = spy_raw.pct_change().dropna()
-            tlt_ret = tlt_raw.pct_change().dropna()
-            # 對齊日期
-            common_idx = returns_df.index.intersection(spy_ret.index).intersection(tlt_ret.index)
-            bm_ret = (spy_ret.loc[common_idx] * bm_spy_pct / 100 +
-                      tlt_ret.loc[common_idx] * bm_tlt_pct / 100)
-            bm_cum = (1 + bm_ret).cumprod()
-            bm_cum = bm_cum / bm_cum.iloc[0] * 100
-            has_bm = True
-        except:
-            has_bm = False
+            if not bm_parse_ok:
+                st.error("❌ 格式錯誤，請用「代號:比例」，每行一個，例如 SPY:60")
+            elif abs(bm_total - 100) > 0.5:
+                st.warning(f"⚠️ 比例合計 {bm_total:.0f}%，需為 100%")
+            else:
+                bm_label = " + ".join([f"{t} {p*100:.0f}%" for t, p in bm_items])
+                st.success(f"✅ Benchmark：{bm_label}")
+
+        # 下載 Benchmark 資料並計算
+        has_bm = False
+        bm_cum = None
+        if bm_parse_ok and abs(bm_total - 100) <= 0.5 and bm_items:
+            try:
+                bm_start = returns_df.index[0] - pd.DateOffset(days=5)
+                bm_end   = returns_df.index[-1]
+                bm_rets_list = []
+                for ticker_bm, w_bm in bm_items:
+                    raw_bm = yf.download(ticker_bm, start=bm_start, end=bm_end,
+                                         auto_adjust=True, progress=False)["Close"].squeeze()
+                    bm_rets_list.append(raw_bm.pct_change().dropna().rename(ticker_bm) * w_bm)
+                bm_df = pd.concat(bm_rets_list, axis=1).dropna()
+                bm_ret_combined = bm_df.sum(axis=1)
+                # 對齊到投組日期
+                common_bm_idx = returns_df.index.intersection(bm_ret_combined.index)
+                bm_ret_aligned = bm_ret_combined.loc[common_bm_idx]
+                bm_cum = (1 + bm_ret_aligned).cumprod()
+                bm_cum = bm_cum / bm_cum.iloc[0] * 100
+                has_bm = True
+            except Exception as e:
+                st.warning(f"Benchmark 資料下載失敗（{e}），僅顯示投組走勢")
 
         # 投組累積報酬
         port_daily_cum = returns_df.dot(weights)
-        common_port_idx = returns_df.index if not has_bm else common_idx
-        port_daily_cum_aligned = port_daily_cum.loc[port_daily_cum.index.isin(common_port_idx if has_bm else returns_df.index)]
-        port_cum_line = (1 + port_daily_cum_aligned).cumprod()
-        port_cum_line = port_cum_line / port_cum_line.iloc[0] * 100
+        port_cum_line  = (1 + port_daily_cum).cumprod()
+        port_cum_line  = port_cum_line / port_cum_line.iloc[0] * 100
 
         fig_cum = go.Figure()
 
         # Benchmark 線（橘色虛線）
-        if has_bm and abs(bm_total - 100) <= 0.1:
+        if has_bm and bm_cum is not None:
+            bm_label_short = " + ".join([f"{t} {p*100:.0f}%" for t, p in bm_items])
             fig_cum.add_trace(go.Scatter(
                 x=bm_cum.index, y=bm_cum.values,
-                name=f"Benchmark（SPY{bm_spy_pct}%+TLT{bm_tlt_pct}%）",
+                name=f"BM（{bm_label_short}）",
                 line=dict(color="#ff9800", width=2, dash="dash"),
             ))
+            bm_final     = bm_cum.iloc[-1]
+            bm_ret_total = (bm_final / 100 - 1) * 100
+            fig_cum.add_annotation(
+                x=bm_cum.index[-1], y=bm_final,
+                text=f"BM {bm_ret_total:+.1f}%",
+                showarrow=True, arrowhead=2, ax=-70, ay=30,
+                font=dict(size=11, color="#ff9800"),
+                bgcolor="white", bordercolor="#ff9800",
+            )
 
         # 投組主線（藍色）
-        final_val  = port_cum_line.iloc[-1]
-        total_ret  = (final_val / 100 - 1) * 100
+        final_val = port_cum_line.iloc[-1]
+        total_ret = (final_val / 100 - 1) * 100
         fig_cum.add_trace(go.Scatter(
             x=port_cum_line.index, y=port_cum_line.values,
             name="📐 投資組合",
@@ -1550,33 +1595,21 @@ if st.session_state.result_ready:
             fill="tozeroy",
             fillcolor="rgba(21,101,192,0.06)",
         ))
+        fig_cum.add_annotation(
+            x=port_cum_line.index[-1], y=final_val,
+            text=f"累積 {total_ret:+.1f}%",
+            showarrow=True, arrowhead=2, ax=-70, ay=-30,
+            font=dict(size=12, color="#1565c0"),
+            bgcolor="white", bordercolor="#1565c0",
+        )
 
         # 100 基準線
         fig_cum.add_hline(y=100, line_color="#888", line_width=0.8, line_dash="dash")
 
-        # 標示終點
-        fig_cum.add_annotation(
-            x=port_cum_line.index[-1], y=final_val,
-            text=f"累積 {total_ret:+.1f}%",
-            showarrow=True, arrowhead=2, ax=-60, ay=-30,
-            font=dict(size=12, color="#1565c0"),
-            bgcolor="white", bordercolor="#1565c0",
-        )
-        if has_bm and abs(bm_total - 100) <= 0.1:
-            bm_final = bm_cum.iloc[-1]
-            bm_ret_total = (bm_final / 100 - 1) * 100
-            fig_cum.add_annotation(
-                x=bm_cum.index[-1], y=bm_final,
-                text=f"BM {bm_ret_total:+.1f}%",
-                showarrow=True, arrowhead=2, ax=-60, ay=30,
-                font=dict(size=11, color="#ff9800"),
-                bgcolor="white", bordercolor="#ff9800",
-            )
-
         fig_cum.update_layout(
             yaxis_title="累積報酬（起始=100）",
             hovermode="x unified",
-            height=380,
+            height=400,
             legend=dict(orientation="h", yanchor="bottom", y=1.02),
         )
         st.plotly_chart(fig_cum, use_container_width=True)
