@@ -1,0 +1,19 @@
+{
+  "name": "happy-pro-",
+  "version": "1.0.0",
+  "description": "[portfolio_README (1).md](https://github.com/user-attachments/files/26789710/portfolio_README.1.md) # happy-pro- 金開心含回測 # 📐 最適投資組合優化器",
+  "main": "generate_ppt.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://local_proxy@127.0.0.1:46615/git/albert7755-ux/happy-pro-"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "pptxgenjs": "^4.0.1"
+  }
+}
