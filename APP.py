@@ -229,6 +229,7 @@ FUND_YIELD_DB = {
     "F0000156JS_FO": 0.0000,
     "F000013TSL_FO": 0.0850,
     "F0GBR04AY1_FO": 0.0900,
+    "F00000XDVB_FO": 0.0000,
     "F00000VH29_FO": 0.1000,
 }
 
@@ -305,6 +306,7 @@ BOND_PAY_MONTHS = {
 FUND_DB = {
     "F00001DRQQ_FO": "PIMCO收益增長",
     "F0GBR04AY1_FO": "富達全球動能多元基金",
+    "F00000XDVB_FO": "復華物聯網科技基金",
     "F00000VH29_FO": "施羅德環球收益成長基金",
     "F0GBR04SG1_FO": "AV04駿利亨德森平衡基金",
     "F0GBR04AMK_FO": "貝萊德環球資產配置基金",
