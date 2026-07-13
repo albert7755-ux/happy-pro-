@@ -225,8 +225,8 @@ FUND_YIELD_DB = {
     "F000015CRE_FO": 0.0821,
     "F0GBR04AY1_FO": 0.0900,
     "F00000VH29_FO": 0.1000,
-    "SI_7pct_FO":    0.0700,   # 富邦SI保本商品（7%模擬）
-    "SI_8pct_FO":    0.0800,   # 富邦SI保本商品（8%模擬）
+    "SI_7pct_FO":    0.0700,   # 富邦SI保本商品（7%配息，NAV另計資本利得）
+    "SI_8pct_FO":    0.0800,   # 富邦SI保本商品（8%配息，NAV另計資本利得）
 }
 
 BOND_CURRENT_YIELD = {
