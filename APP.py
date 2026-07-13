@@ -444,6 +444,7 @@ def read_sheet_as_series(sheet_id, label):
         df["date"] = pd.to_datetime(df[date_col], errors="coerce")
     df = df.dropna(subset=["date"])
     df = df.sort_values("date").set_index("date")
+    df = df[~df.index.duplicated(keep="last")]  # ★ 去除重複日期
     return df[val_col].astype(float).rename(label)
 
 # ==========================================
