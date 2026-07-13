@@ -1297,8 +1297,15 @@ if run_btn and total_selected >= 2:
             simulated_labels = [lbl for lbl in all_series.keys()
                                 if any(kw in lbl for kw in ["SI", "保本", "結構型", "模擬"])]
 
-            returns_df = pd.DataFrame(all_series).dropna()
+            returns_df = pd.DataFrame(all_series)
             returns_df = returns_df[returns_df.index >= start_date]
+            returns_df = returns_df.dropna()
+
+            # ★ 顯示實際回測起始日（讓使用者知道真正的計算區間）
+            if len(returns_df) > 0:
+                actual_start = returns_df.index[0]
+                actual_end   = returns_df.index[-1]
+                st.caption(f"📅 實際回測區間：{actual_start.strftime('%Y/%m/%d')} ～ {actual_end.strftime('%Y/%m/%d')}（{len(returns_df)} 個交易日）")
             if len(returns_df) < 30:
                 st.error("有效交集資料不足 30 天，請換標的或延長期間！")
                 st.stop()
