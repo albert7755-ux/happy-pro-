@@ -314,6 +314,8 @@ FUND_DB = {
     "F0GBR04MRF_FO": "聯博-美國成長基金",
     "F00000PA64_FO": "聯博-優化波動股票基金",
     "F000015CRE_FO": "富蘭克林穩定月收益A(acc)",
+    "SI_7pct_FO": "富邦SI保本商品(7%模擬)",
+    "SI_8pct_FO": "富邦SI保本商品(8%模擬)",
 }
 
 # FINRA ISIN → ticker 對照（用於比對 bond-data 試算表名稱）
