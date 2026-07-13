@@ -227,6 +227,7 @@ FUND_YIELD_DB = {
     "F00000VH29_FO": 0.1000,
     "SI_7pct_FO":    0.0700,   # 富邦SI保本商品（7%配息，NAV另計資本利得）
     "SI_8pct_FO":    0.0800,   # 富邦SI保本商品（8%配息，NAV另計資本利得）
+    "F00000XDVB_FO": 0.0000,   # 復華全球物聯網科技基金（無配息）
 }
 
 BOND_CURRENT_YIELD = {
@@ -316,8 +317,9 @@ FUND_DB = {
     "F0GBR04MRF_FO": "聯博-美國成長基金",
     "F00000PA64_FO": "聯博-優化波動股票基金",
     "F000015CRE_FO": "富蘭克林穩定月收益A(acc)",
-    "SI_7pct_FO": "富邦SI保本商品(7%模擬)",
-    "SI_8pct_FO": "富邦SI保本商品(8%模擬)",
+    "SI_7pct_FO":    "富邦SI保本商品(7%模擬)",
+    "SI_8pct_FO":    "富邦SI保本商品(8%模擬)",
+    "F00000XDVB_FO": "復華全球物聯網科技基金",
 }
 
 # FINRA ISIN → ticker 對照（用於比對 bond-data 試算表名稱）
