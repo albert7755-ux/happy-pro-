@@ -136,8 +136,6 @@ LOCAL_DB = {
     "US58933YAW57": {"issuer": "默克藥廠公司債1", "coupon": 4.0, "maturity": "2049"},
     "US854502AJ02": {"issuer": "史丹利百得公司債3", "coupon": 4.85, "maturity": "2048"},
     "US125523AK66": {"issuer": "信諾公司債1", "coupon": 4.9, "maturity": "2048"},
-    "US11135FCX78": {"issuer": "博通公司債1", "coupon": 4.9, "maturity": "2038"},
-    "USH4209EU71":  {"issuer": "瑞銀集團公司債1", "coupon": 5.699, "maturity": "2037"},
     "US88579YBD22": {"issuer": "3M公司債1", "coupon": 4.0, "maturity": "2048"},
     "US084664CQ25": {"issuer": "波克夏海瑟威債1", "coupon": 4.2, "maturity": "2048"},
     "XS1807174559": {"issuer": "卡達政府國際債1", "coupon": 5.103, "maturity": "2048"},
@@ -225,11 +223,7 @@ FUND_YIELD_DB = {
     "F00000V557_FO": 0.0824,
     "F00001EQPP_FO": 0.0904,
     "F000015CRE_FO": 0.0821,
-    "F0HKG05X1A_FO": 0.0000,
-    "F0000156JS_FO": 0.0000,
-    "F000013TSL_FO": 0.0850,
     "F0GBR04AY1_FO": 0.0900,
-    "F00000XDVB_FO": 0.0000,
     "F00000VH29_FO": 0.1000,
 }
 
@@ -265,7 +259,6 @@ BOND_CURRENT_YIELD = {
     "US872898AJ06": 0.0450, "US084664DB47": 0.0385, "US92343VGP31": 0.0388,
     "US828807DJ39": 0.0380, "US191216CQ13": 0.0420, "US254687FM36": 0.0275,
     "XS1982116136": 0.0438, "US58933YAW57": 0.0400, "US125523AK66": 0.0490,
-    "US11135FCX78": 0.0490, "USH4209EU71": 0.0570,
 }
 
 BOND_PAY_MONTHS = {
@@ -300,13 +293,11 @@ BOND_PAY_MONTHS = {
     "US872898AJ06": (4, 10), "US084664DB47": (3, 9), "US92343VGP31": (8, 2),
     "US828807DJ39": (7, 1), "US191216CQ13": (10, 4), "US254687FM36": (9, 3),
     "XS1982116136": (3, 9), "US58933YAW57": (9, 3), "US125523AK66": (3, 9),
-    "US11135FCX78": (2, 8), "USH4209EU71": (2, 8),
 }
 
 FUND_DB = {
     "F00001DRQQ_FO": "PIMCO收益增長",
     "F0GBR04AY1_FO": "富達全球動能多元基金",
-    "F00000XDVB_FO": "復華物聯網科技基金",
     "F00000VH29_FO": "施羅德環球收益成長基金",
     "F0GBR04SG1_FO": "AV04駿利亨德森平衡基金",
     "F0GBR04AMK_FO": "貝萊德環球資產配置基金",
@@ -323,9 +314,6 @@ FUND_DB = {
     "F0GBR04MRF_FO": "聯博-美國成長基金",
     "F00000PA64_FO": "聯博-優化波動股票基金",
     "F000015CRE_FO": "富蘭克林穩定月收益A(acc)",
-    "F0HKG05X1A_FO": "國泰國泰",
-    "F0000156JS_FO": "路博邁次世代通訊",
-    "F000013TSL_FO": "安聯智慧城市收益",
 }
 
 # FINRA ISIN → ticker 對照（用於比對 bond-data 試算表名稱）
@@ -335,8 +323,6 @@ FINRA_ISIN_TO_TICKER = {
     "US084670BK32": "BRK3963113",
     "US035242AM81": "BUD4327587",
     "US125523AK66": "CI4866401",
-    "US11135FCX78": "AVGO6183496",
-    "USH4209EU71":  "UBS5728143",
     "US125523CF53": "CI5003121",
     "US20030NBU46": "CMCS4382861",
     "US31428XCA28": "FBUO6172956",
@@ -595,6 +581,20 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
         colWidths=[17*cm]
     )
     title_tbl.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,-1),NAVY),("TOPPADDING",(0,0),(-1,-1),16),("BOTTOMPADDING",(0,0),(-1,-1),16)]))
+    # 模擬資料警示（如有）
+    sim_labels_pdf = st.session_state.get("simulated_labels", [])
+    if sim_labels_pdf:
+        sim_style = ParagraphStyle("sim", fontName=font, fontSize=8.5,
+                                   textColor=colors.HexColor("#c62828"),
+                                   backColor=colors.HexColor("#fff3cd"),
+                                   borderPadding=8, spaceAfter=6)
+        story.insert(3, Paragraph(
+            f"⚠️ 模擬資料提醒：本報告包含以下標的之模擬試算價格，非實際市場成交資料，"
+            f"回測結果僅供參考：{', '.join(sim_labels_pdf)}。"
+            f"實際商品報酬視發行機構公告及市場條件而定，投資前請審慎評估。",
+            sim_style
+        ))
+
     story.append(title_tbl)
     story.append(Spacer(1, 0.5*cm))
 
@@ -1286,6 +1286,10 @@ if run_btn and total_selected >= 2:
                 st.error("有效標的不足 2 個，無法計算！")
                 st.stop()
 
+            # ★ 記錄哪些標的是模擬資料（用於警示）
+            simulated_labels = [lbl for lbl in all_series.keys()
+                                if any(kw in lbl for kw in ["SI", "保本", "結構型", "模擬"])]
+
             returns_df = pd.DataFrame(all_series).dropna()
             returns_df = returns_df[returns_df.index >= start_date]
             if len(returns_df) < 30:
@@ -1320,6 +1324,7 @@ if run_btn and total_selected >= 2:
                 "port_ret": port_ret, "port_vol": port_vol, "port_sharpe": port_sharpe,
                 "port_mdd": port_mdd, "mdd_series": mdd_series,
                 "period_label": period_label, "method_label": method_label,
+                "simulated_labels": simulated_labels,
             })
         except Exception as e:
             st.error(f"發生錯誤：{e}")
@@ -1343,6 +1348,15 @@ if st.session_state.result_ready:
     mdd_series  = st.session_state.get("mdd_series", None)
 
     with tab_result:
+        # ★ 若有模擬標的，顯示警示
+        simulated_labels = st.session_state.get("simulated_labels", [])
+        if simulated_labels:
+            st.warning(
+                f"⚠️ **模擬資料提醒**：本分析包含以下標的的**模擬試算價格**，"
+                f"非實際市場成交資料，回測結果僅供參考，不代表真實績效：\n\n"
+                f"**{', '.join(simulated_labels)}**\n\n"
+                f"實際商品報酬視發行機構公告及市場條件而定，投資前請審慎評估。"
+            )
         st.subheader(f"最適組合：{st.session_state.method_label}")
         k1, k2, k3, k4 = st.columns(4)
         k1.metric("組合年化報酬", f"{port_ret:.2%}")
