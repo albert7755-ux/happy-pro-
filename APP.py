@@ -460,12 +460,14 @@ def total_return_series(price_series, coupon_rate):
     return pd.Series(tri, index=price_series.index)
 
 def calc_annual_ret(price_series):
-    """按年度計算平均年化報酬（排除當年度），與智能投資組合優化器一致"""
-    ann = price_series.resample('YE').last().pct_change().dropna()
-    current_year = datetime.now().year
-    if current_year in ann.index.year:
-        ann = ann[ann.index.year != current_year]
-    return ann.mean() if len(ann) > 0 else price_series.pct_change().mean() * 252
+    """複利年化報酬（CAGR）：含全部期間資料，與 FundDJ 等業界標準一致"""
+    if len(price_series) < 2:
+        return 0.0
+    total_ret = price_series.iloc[-1] / price_series.iloc[0]
+    n_years = len(price_series) / 252
+    if n_years <= 0 or total_ret <= 0:
+        return 0.0
+    return total_ret ** (1 / n_years) - 1
 
 def calc_stats(returns_df):
     """計算年化報酬（年度平均）、標準差、夏普比率"""
