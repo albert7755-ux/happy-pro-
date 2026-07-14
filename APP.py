@@ -1807,8 +1807,11 @@ if st.session_state.result_ready:
 
         grow_col1, grow_col2 = st.columns([1, 3])
         with grow_col1:
-            # ★ 使用左側欄的統一投資本金
-            grow_principal = principal_input
+            # ★ 使用左側欄的統一投資本金；自訂金額模式則用自訂的總金額
+            if method == "custom" and custom_total_principal > 0:
+                grow_principal = custom_total_principal
+            else:
+                grow_principal = principal_input
             st.info(f"💵 投入本金：NT${grow_principal:,.0f}")
             grow_years = st.slider("預期投入年數", min_value=1, max_value=30, value=10, step=1, key="grow_years")
 
@@ -1928,8 +1931,11 @@ if st.session_state.result_ready:
         st.subheader("💰 配息現金流試算")
         st.caption("根據最適配置比例自動帶入，債券使用當前殖利率，基金配息率可手動調整。")
 
-        # ★ 使用左側欄的統一投資本金
-        principal_cf = principal_input
+        # ★ 使用左側欄的統一投資本金；自訂金額模式則用自訂的總金額
+        if method == "custom" and custom_total_principal > 0:
+            principal_cf = custom_total_principal
+        else:
+            principal_cf = principal_input
 
         # 基金配息率調整
         fund_labels_in = [lbl for lbl, w in zip(labels, weights) if w > 0.001 and lbl in [FUND_DB.get(k, "") for k in FUND_DB]]
