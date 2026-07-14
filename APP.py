@@ -31,7 +31,7 @@ def generate_ai_commentary(port_ret, port_vol, port_sharpe, port_mdd,
     try:
         api_key = st.secrets.get("ANTHROPIC_API_KEY", os.getenv("ANTHROPIC_API_KEY", ""))
         if not api_key:
-            return None
+            return generate_rule_based_commentary(port_ret, port_vol, port_sharpe, port_mdd)
         client = _anthropic.Anthropic(api_key=api_key)
 
         # 整理標的資訊
@@ -74,7 +74,57 @@ def generate_ai_commentary(port_ret, port_vol, port_sharpe, port_mdd,
         return resp.content[0].text.strip()
     except Exception as e:
         print(f"[AI commentary] 生成失敗：{e}")
-        return None
+        # ★ 備用：用規則生成解讀（跟頁面白話解讀一致的邏輯）
+        return generate_rule_based_commentary(port_ret, port_vol, port_sharpe, port_mdd)
+
+def generate_rule_based_commentary(port_ret, port_vol, port_sharpe, port_mdd):
+    """規則式白話解讀（Claude API 失敗時的備用方案）"""
+    # 報酬
+    if port_ret >= 0.20:
+        ret_c = f"報酬：非常亮眼！年化報酬 {port_ret:.1%}，表現相當強勁。"
+    elif port_ret >= 0.12:
+        ret_c = f"報酬：表現不錯，年化報酬 {port_ret:.1%}，高於一般股債混合基金平均水準。"
+    elif port_ret >= 0.06:
+        ret_c = f"報酬：穩健成長，年化報酬 {port_ret:.1%}，適合穩健型投資人。"
+    else:
+        ret_c = f"報酬：年化報酬 {port_ret:.1%}，屬保守收益水準。"
+
+    # 波動
+    if port_vol <= 0.05:
+        vol_c = f"波動率僅 {port_vol:.1%}，非常穩定，適合保守型投資人。"
+    elif port_vol <= 0.10:
+        vol_c = f"波動率 {port_vol:.1%}，中等波動，一般投資人都能接受。"
+    elif port_vol <= 0.15:
+        vol_c = f"波動率 {port_vol:.1%}，偏高，需要有一定風險承受能力。"
+    else:
+        vol_c = f"波動率 {port_vol:.1%}，高波動，適合積極型投資人。"
+
+    # 夏普
+    if port_sharpe >= 2.0:
+        sharpe_c = f"夏普比率 {port_sharpe:.2f}，卓越！每承擔1單位風險可獲得超過2單位報酬，效率極高。"
+    elif port_sharpe >= 1.0:
+        sharpe_c = f"夏普比率 {port_sharpe:.2f}，優秀！每承擔1單位風險可獲得約{port_sharpe:.1f}單位報酬，效率良好。"
+    elif port_sharpe >= 0.5:
+        sharpe_c = f"夏普比率 {port_sharpe:.2f}，尚可，風險報酬比處於一般水準。"
+    else:
+        sharpe_c = f"夏普比率 {port_sharpe:.2f}，偏低。"
+
+    # MDD
+    mdd_c = ""
+    if port_mdd is not None and port_mdd != 0:
+        mdd_abs = abs(port_mdd)
+        if mdd_abs <= 0.05:
+            mdd_c = f"最大回撤僅 {port_mdd:.1%}，控制極佳，幾乎沒有大幅虧損的風險。"
+        elif mdd_abs <= 0.15:
+            mdd_c = f"最大回撤 {port_mdd:.1%}，控制良好，即使遇到市場動盪也不至於大幅虧損。"
+        elif mdd_abs <= 0.25:
+            mdd_c = f"最大回撤 {port_mdd:.1%}，中等，市場下跌時需有心理準備。"
+        else:
+            mdd_c = f"最大回撤 {port_mdd:.1%}，偏大。"
+
+    para1 = f"{ret_c}{vol_c}"
+    para2 = f"{sharpe_c}{mdd_c}"
+    return f"{para1}\n\n{para2}"
 
 st.set_page_config(page_title="最適投資組合優化器", layout="wide", page_icon="📐")
 
