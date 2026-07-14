@@ -620,6 +620,23 @@ def get_chinese_font():
         return "Helvetica"
 
 def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret, port_vol, port_sharpe, method_name, period_label, commentary=None, principal=10000000):
+    # ── matplotlib 圖表 helper ──
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.ticker as mticker
+    import io as _io_mpl
+    from reportlab.platypus import Image as RLImage
+
+    def _fig_to_rl_image(fig, width_cm=17, height_cm=8):
+        """matplotlib figure → ReportLab Image"""
+        buf = _io_mpl.BytesIO()
+        fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        buf.seek(0)
+        return RLImage(buf, width=width_cm*cm, height=height_cm*cm)
+
+    PIE_COLORS = ["#1565c0","#c62828","#2e7d32","#6a1b9a","#e65100","#00838f","#c8a030","#455a64"]
     buf = io.BytesIO()
     font = get_chinese_font()
     NAVY = colors.HexColor("#1a2744")
@@ -748,6 +765,34 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
         ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
     ]))
     story.append(stats_tbl)
+    story.append(Spacer(1, 0.3*cm))
+
+    # ★ 配置圓餅圖
+    try:
+        sig_items = [(labels[i][:10], weights[i]) for i in range(len(labels)) if weights[i] > 0.005]
+        if sig_items:
+            pie_labels, pie_vals = zip(*sig_items)
+            fig_pie, ax_pie = plt.subplots(figsize=(6.5, 4))
+            wedges, texts, autotexts = ax_pie.pie(
+                pie_vals, labels=None, autopct="%1.1f%%",
+                colors=PIE_COLORS[:len(pie_vals)],
+                startangle=90, pctdistance=0.75,
+                wedgeprops=dict(width=0.45, edgecolor="white"),
+            )
+            for at in autotexts:
+                at.set_fontsize(9)
+                at.set_color("white")
+                at.set_fontweight("bold")
+            ax_pie.legend(wedges, [f"Asset {i+1}" for i in range(len(pie_labels))], loc="center left",
+                          bbox_to_anchor=(1.0, 0.5), fontsize=8, frameon=False)
+            ax_pie.set_aspect("equal")
+            plt.tight_layout()
+            story.append(_fig_to_rl_image(fig_pie, width_cm=12, height_cm=7))
+            # 圖例對照（中文在 PDF 表格顯示）
+            legend_txt = "　".join([f"Asset {i+1} = {pie_labels[i]}（{pie_vals[i]:.1%}）" for i in range(len(pie_labels))])
+            story.append(Paragraph(f"※ {legend_txt}", small_s))
+    except Exception:
+        pass
     story.append(Spacer(1, 0.4*cm))
 
     # ── 二、年度報酬回顧 ──
@@ -789,6 +834,32 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
             except: pass
         ann_tbl.setStyle(TableStyle(ann_style))
         story.append(ann_tbl)
+        story.append(Spacer(1, 0.2*cm))
+
+        # ★ 年度報酬長條圖
+        try:
+            yrs_sorted = sorted(annual_rows_pdf.keys())
+            port_vals_pdf = [annual_rows_pdf[y] * 100 for y in yrs_sorted]
+            fig_ann, ax_ann = plt.subplots(figsize=(9, 3.2))
+            bar_colors_pdf = ["#1565c0" if v >= 0 else "#c62828" for v in port_vals_pdf]
+            bars = ax_ann.bar(yrs_sorted, port_vals_pdf, color=bar_colors_pdf, width=0.55)
+            for b, v in zip(bars, port_vals_pdf):
+                ax_ann.annotate(f"{v:+.1f}%",
+                                xy=(b.get_x() + b.get_width()/2, v),
+                                xytext=(0, 4 if v >= 0 else -12),
+                                textcoords="offset points",
+                                ha="center", fontsize=9,
+                                color=("#1565c0" if v >= 0 else "#c62828"),
+                                fontweight="bold")
+            ax_ann.axhline(y=0, color="#888", linewidth=0.8)
+            ax_ann.set_ylabel("Annual Return (%)", fontsize=9)
+            ax_ann.grid(axis="y", linestyle="--", alpha=0.3)
+            ax_ann.spines["top"].set_visible(False)
+            ax_ann.spines["right"].set_visible(False)
+            plt.tight_layout()
+            story.append(_fig_to_rl_image(fig_ann, width_cm=17, height_cm=6))
+        except Exception:
+            pass
         story.append(Spacer(1, 0.3*cm))
     else:
         story.append(Paragraph("※ 回測期間不足一年，無完整年度資料。", small_s))
@@ -798,33 +869,44 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
     story.append(HRFlowable(width="100%", thickness=2, color=GOLD, spaceAfter=8))
     corr = returns_df.corr()
     short_labels = [lbl[:10] for lbl in corr.columns.tolist()]
-    corr_rows = [[""] + short_labels]
-    for i, lbl in enumerate(short_labels):
-        corr_rows.append([lbl] + [f"{corr.iloc[i,j]:.2f}" for j in range(len(short_labels))])
-    n_cols = len(short_labels) + 1
-    corr_tbl = Table(corr_rows, colWidths=[17*cm/n_cols]*n_cols)
-    corr_style = [
-        ("BACKGROUND",(0,0),(-1,0),NAVY),("TEXTCOLOR",(0,0),(-1,0),WHITE),
-        ("BACKGROUND",(0,0),(0,-1),NAVY),("TEXTCOLOR",(0,0),(0,-1),WHITE),
-        ("FONTNAME",(0,0),(-1,-1),font),("FONTSIZE",(0,0),(-1,-1),7),
-        ("ALIGN",(0,0),(-1,-1),"CENTER"),("GRID",(0,0),(-1,-1),0.3,colors.HexColor("#dddddd")),
-        ("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4),
-    ]
-    for i in range(1, len(corr_rows)):
-        for j in range(1, n_cols):
-            try:
-                val = float(corr_rows[i][j])
-                if i != j:
-                    if val > 0.7:
-                        corr_style.append(("BACKGROUND",(j,i),(j,i),colors.HexColor("#ffcdd2")))
-                    elif val < 0.3:
-                        corr_style.append(("BACKGROUND",(j,i),(j,i),colors.HexColor("#c8e6c9")))
-            except:
-                pass
-    corr_tbl.setStyle(TableStyle(corr_style))
-    story.append(corr_tbl)
+
+    # ★ 熱力圖版本
+    try:
+        import numpy as _np_corr
+        n_c = len(short_labels)
+        fig_corr, ax_corr = plt.subplots(figsize=(max(5, n_c*1.3), max(4, n_c*1.1)))
+        im = ax_corr.imshow(corr.values, cmap="RdYlGn_r", vmin=-1, vmax=1)
+        ax_corr.set_xticks(range(n_c))
+        ax_corr.set_yticks(range(n_c))
+        ax_corr.set_xticklabels([f"A{i+1}" for i in range(n_c)], fontsize=9)
+        ax_corr.set_yticklabels([f"A{i+1}" for i in range(n_c)], fontsize=9)
+        for i in range(n_c):
+            for j in range(n_c):
+                v = corr.values[i, j]
+                ax_corr.text(j, i, f"{v:.2f}", ha="center", va="center",
+                             fontsize=10, fontweight="bold",
+                             color="white" if abs(v) > 0.6 else "#333333")
+        fig_corr.colorbar(im, ax=ax_corr, shrink=0.8)
+        plt.tight_layout()
+        story.append(_fig_to_rl_image(fig_corr, width_cm=min(14, 5+n_c*2), height_cm=min(11, 4+n_c*1.6)))
+        legend_corr = "　".join([f"A{i+1} = {short_labels[i]}" for i in range(n_c)])
+        story.append(Paragraph(f"※ {legend_corr}", small_s))
+    except Exception:
+        # 備用：原表格
+        corr_rows = [[""] + short_labels]
+        for i, lbl in enumerate(short_labels):
+            corr_rows.append([lbl] + [f"{corr.iloc[i,j]:.2f}" for j in range(len(short_labels))])
+        n_cols = len(short_labels) + 1
+        corr_tbl = Table(corr_rows, colWidths=[17*cm/n_cols]*n_cols)
+        corr_tbl.setStyle(TableStyle([
+            ("BACKGROUND",(0,0),(-1,0),NAVY),("TEXTCOLOR",(0,0),(-1,0),WHITE),
+            ("BACKGROUND",(0,0),(0,-1),NAVY),("TEXTCOLOR",(0,0),(0,-1),WHITE),
+            ("FONTNAME",(0,0),(-1,-1),font),("FONTSIZE",(0,0),(-1,-1),7),
+            ("ALIGN",(0,0),(-1,-1),"CENTER"),("GRID",(0,0),(-1,-1),0.3,colors.HexColor("#dddddd")),
+        ]))
+        story.append(corr_tbl)
     story.append(Spacer(1, 0.3*cm))
-    story.append(Paragraph("※ 紅底=高相關(>0.7)，綠底=低相關(<0.3)。低相關標的有助分散風險。", small_s))
+    story.append(Paragraph("※ 紅色=高相關，綠色=低相關/負相關。低相關標的有助分散風險。", small_s))
 
     # ── 四、持有期間正報酬機率 ──
     story.append(PageBreak())
@@ -882,6 +964,36 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
             except: pass
     win_tbl.setStyle(TableStyle(win_style))
     story.append(win_tbl)
+
+    # ★ 效率前緣圖
+    try:
+        ef_vols, ef_rets = efficient_frontier(returns_df)
+        fig_ef, ax_ef = plt.subplots(figsize=(8, 4.2))
+        ax_ef.plot([v*100 for v in ef_vols], [r*100 for r in ef_rets],
+                   color="#1565c0", linewidth=2, label="Efficient Frontier")
+        # 各標的散點
+        for i, lbl in enumerate(labels):
+            ax_ef.scatter(float(ann_vol.iloc[i])*100, float(ann_ret.iloc[i])*100,
+                          s=50, color="#888888", zorder=3)
+            ax_ef.annotate(f"A{i+1}", (float(ann_vol.iloc[i])*100, float(ann_ret.iloc[i])*100),
+                           xytext=(5, 5), textcoords="offset points", fontsize=8, color="#555555")
+        # 投組位置（紅星）
+        ax_ef.scatter(port_vol*100, port_ret*100, s=220, marker="*",
+                      color="#c62828", zorder=5, label="Portfolio")
+        ax_ef.set_xlabel("Annual Volatility (%)", fontsize=9)
+        ax_ef.set_ylabel("Annual Return (%)", fontsize=9)
+        ax_ef.legend(fontsize=9, loc="lower right")
+        ax_ef.grid(linestyle="--", alpha=0.3)
+        ax_ef.spines["top"].set_visible(False)
+        ax_ef.spines["right"].set_visible(False)
+        plt.tight_layout()
+        story.append(Spacer(1, 0.3*cm))
+        story.append(Paragraph("效率前緣與投組位置", ParagraphStyle("efh", fontName=font, fontSize=10, textColor=NAVY, spaceBefore=4, spaceAfter=4)))
+        story.append(_fig_to_rl_image(fig_ef, width_cm=15, height_cm=8))
+        ef_legend = "　".join([f"A{i+1}={labels[i][:8]}" for i in range(len(labels))])
+        story.append(Paragraph(f"※ {ef_legend}　★紅星=本投組", small_s))
+    except Exception:
+        pass
 
     # ── 六、現金流試算 ──
     cf_items_pdf = st.session_state.get("cf_items_auto", [])
@@ -1102,6 +1214,37 @@ def generate_pdf(weights, labels, ann_ret, ann_vol, sharpe, returns_df, port_ret
         ]
         cf_pdf_tbl.setStyle(TableStyle(cf_pdf_style))
         story.append(cf_pdf_tbl)
+
+        # ★ 逐月現金流堆疊長條圖
+        try:
+            months_x = list(range(1, 13))
+            fig_cf, ax_cf = plt.subplots(figsize=(9, 3.5))
+            bottom = [0]*12
+            for ci, item in enumerate(cf_items_pdf):
+                mvals = [item["annual_income"]/12 if m in range(1,13) else 0 for m in months_x]
+                # 依配息月份分配（月配 or 指定月份）
+                if "pay_months" in item and item["pay_months"] and item.get("type") != "FUND":
+                    mvals = [item["annual_income"]/len(item["pay_months"]) if m in item["pay_months"] else 0 for m in months_x]
+                ax_cf.bar(months_x, mvals, bottom=bottom,
+                          color=PIE_COLORS[ci % len(PIE_COLORS)],
+                          label=f"A{ci+1}", width=0.6)
+                bottom = [bottom[k] + mvals[k] for k in range(12)]
+            ax_cf.set_xticks(months_x)
+            ax_cf.set_xticklabels([f"{m}" for m in months_x], fontsize=8)
+            ax_cf.set_xlabel("Month", fontsize=9)
+            ax_cf.set_ylabel("Income (NT$)", fontsize=9)
+            ax_cf.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{x/1000:.0f}K"))
+            ax_cf.legend(fontsize=8, loc="upper right", ncol=min(len(cf_items_pdf), 4))
+            ax_cf.grid(axis="y", linestyle="--", alpha=0.3)
+            ax_cf.spines["top"].set_visible(False)
+            ax_cf.spines["right"].set_visible(False)
+            plt.tight_layout()
+            story.append(Spacer(1, 0.2*cm))
+            story.append(_fig_to_rl_image(fig_cf, width_cm=17, height_cm=6.5))
+            cf_legend = "　".join([f"A{ci+1}={cf_items_pdf[ci]['name'][:8]}" for ci in range(len(cf_items_pdf))])
+            story.append(Paragraph(f"※ {cf_legend}", small_s))
+        except Exception:
+            pass
 
     story.append(Spacer(1, 0.5*cm))
     story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#888"), spaceAfter=6))
