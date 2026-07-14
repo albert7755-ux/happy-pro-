@@ -1320,6 +1320,12 @@ if run_btn and total_selected >= 2:
                 if total_amt > 0:
                     weights = np.array([custom_amounts.get(lbl, 0) / total_amt for lbl in labels])
                 else:
+                    # ★ 名稱對不上時的偵錯提示
+                    st.warning(
+                        f"⚠️ 自訂金額的標的名稱與資料標籤對不上，已改用最大夏普優化。\n\n"
+                        f"自訂金額的標的：{list(custom_amounts.keys())}\n\n"
+                        f"資料標籤：{labels}"
+                    )
                     weights = run_optimization(returns_df, method="max_sharpe", target_return=target_return, mdd_limit=mdd_limit)
             else:
                 weights = run_optimization(returns_df, method=method, target_return=target_return, mdd_limit=mdd_limit)
