@@ -138,7 +138,7 @@ if not st.session_state.authenticated:
     st.markdown("請輸入授權碼以存取投資組合優化功能。")
     password = st.text_input("請輸入系統密碼", type="password")
     if password:
-        if password == "5428":
+        if password == "0000":
             st.session_state.authenticated = True
             st.rerun()
         else:
